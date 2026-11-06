@@ -9,6 +9,8 @@ from typing import Any
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from src.utils.llm_json import coerce_str_list
+
 
 def mapping_export_payload(draft: dict[str, Any]) -> dict[str, Any]:
     source_files = draft.get("source_files") or {}
@@ -67,8 +69,8 @@ def _analysis_rows(analysis: dict[str, Any]) -> list[list[Any]]:
                 transform.get("type", ""),
                 transform.get("logic", ""),
                 item.get("risk", ""),
-                "; ".join(item.get("gaps") or []),
-                ", ".join(rule.get("rule_id", "") for rule in rules),
+                "; ".join(coerce_str_list(item.get("gaps"))),
+                ", ".join(str(rule.get("rule_id", "")) for rule in rules),
                 "Yes" if item.get("requires_review") else "No",
                 item.get("notes", ""),
             ]

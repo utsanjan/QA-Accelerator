@@ -1,7 +1,6 @@
 import streamlit as st
 
 from app.components.theme import page_header
-from src.config import get_connection_status
 
 
 def render() -> None:

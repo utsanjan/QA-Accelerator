@@ -1,5 +1,7 @@
 import json
 
+import httpx
+
 from src.config import AzureDevOpsSettings, get_azure_devops_settings
 from src.integrations.ado_importer import AdoImporter, _strip_html
 from src.integrations.azure_devops_client import AzureDevOpsClient
@@ -77,6 +79,33 @@ def test_ui_empty_work_item_ids_do_not_use_env_default(monkeypatch):
 
     from_override = get_azure_devops_settings(work_item_ids=[101, 102])
     assert from_override.work_item_ids == (101, 102)
+
+
+def test_unauthorized_pat_has_actionable_error(monkeypatch):
+    settings = AzureDevOpsSettings(
+        organization="contoso",
+        project="QA Project",
+        pat="token",
+        area_path="",
+        iteration_path="",
+        work_item_ids=(),
+        work_item_types=("User Story",),
+        max_stories=10,
+        timeout_seconds=30,
+    )
+    response = httpx.Response(
+        401,
+        request=httpx.Request("GET", "https://dev.azure.com/contoso/_apis/projects"),
+    )
+    monkeypatch.setattr("src.integrations.azure_devops_client.httpx.get", lambda *args, **kwargs: response)
+
+    try:
+        AzureDevOpsClient(settings).test_connection()
+    except RuntimeError as error:
+        assert "rejected the PAT" in str(error)
+        assert "AZURE_DEVOPS_PAT" in str(error)
+    else:
+        raise AssertionError("Expected an actionable 401 error")
 
 
 def test_replace_imported_stories_removes_one(tmp_path, monkeypatch):

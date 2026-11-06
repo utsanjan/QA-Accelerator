@@ -1,4 +1,5 @@
 from . import (
+    background_tasks,
     build_spec,
     generate_qa,
     home,
@@ -21,5 +22,6 @@ PAGES = {
     "Test Case Explorer": test_cases.render,
     "Spec Library": spec_library.render,
     "Run History": run_history.render,
+    "Background Tasks": background_tasks.render,
     "Settings": settings.render,
 }

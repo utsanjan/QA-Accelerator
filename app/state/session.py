@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
 import streamlit as st
@@ -27,15 +29,93 @@ def init_session() -> None:
         "ui_context": "",
         "selected_run_id": "",
         "kpi_logic_normalized": None,
+        "qa_generation_job": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    poll_qa_generation_job()
+    from app.state.background_tasks import init_background_task_state
+
+    init_background_task_state()
 
 
 def set_validation_result(result: dict[str, Any]) -> None:
     st.session_state["last_validation_result"] = result
     st.session_state["selected_run_id"] = result.get("run_id", "")
+
+
+def start_qa_generation(
+    service,
+    draft_id: str,
+    *,
+    execute_queries: bool,
+    include_functional: bool,
+    include_sql: bool,
+) -> Future:
+    job = st.session_state.get("qa_generation_job")
+    if job and not job["future"].done():
+        raise RuntimeError("A QA pack generation is already running.")
+
+    executor = st.session_state.get("qa_generation_executor")
+    if executor is None:
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qa-generation")
+        st.session_state["qa_generation_executor"] = executor
+
+    future = executor.submit(
+        service.approve_and_validate,
+        draft_id,
+        execute_queries=execute_queries,
+        report_path=OUTPUT / "qa_validation_pack.md",
+        test_cases_path=OUTPUT / "qa_test_cases.xlsx",
+    )
+    st.session_state["qa_generation_job"] = {
+        "future": future,
+        "draft_id": draft_id,
+        "started_at": datetime.now(UTC).isoformat(),
+        "include_functional": include_functional,
+        "include_sql": include_sql,
+    }
+    return future
+
+
+def get_qa_generation_job() -> dict[str, Any] | None:
+    return st.session_state.get("qa_generation_job")
+
+
+def clear_qa_generation_job() -> None:
+    st.session_state.pop("qa_generation_job", None)
+
+
+def poll_qa_generation_job() -> dict[str, Any] | None:
+    job = st.session_state.get("qa_generation_job")
+    if not job or not job["future"].done() or job.get("processed"):
+        return job
+
+    try:
+        result = job["future"].result()
+        validation = result["validation"]
+        if not job["include_functional"]:
+            validation["test_cases"] = [
+                case
+                for case in (validation.get("test_cases") or [])
+                if case.get("test_type") == "Data Validation"
+            ]
+        if not job["include_sql"]:
+            validation["tests"] = []
+        set_validation_result(validation)
+        job["status"] = "complete"
+        if not job.get("completion_notified"):
+            st.toast("QA pack generation completed.", icon="✅")
+            job["completion_notified"] = True
+    except Exception as exc:
+        job["status"] = "failed"
+        job["error"] = str(exc)
+        if not job.get("completion_notified"):
+            st.toast("QA pack generation failed. Open Background Tasks for details.", icon="⚠️")
+            job["completion_notified"] = True
+    job["processed"] = True
+    return job
 
 
 _PARSER_MODULES = (

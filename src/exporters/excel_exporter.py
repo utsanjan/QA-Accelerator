@@ -5,6 +5,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 
 from src.models.test_case import StructuredTestCase
+from src.utils.llm_json import coerce_str_list
 
 
 def _save_workbook(workbook: Workbook, output_path: Path) -> Path:
@@ -76,7 +77,7 @@ def export_test_cases_to_excel(
                 [
                     row.get("requirement_id", ""),
                     row.get("requirement_text", ""),
-                    ", ".join(row.get("test_case_ids") or []),
+                    ", ".join(coerce_str_list(row.get("test_case_ids"))),
                     row.get("coverage_status", ""),
                 ]
                 for row in rtm_rows
@@ -146,8 +147,8 @@ def export_test_cases_to_excel(
                     transform.get("type", ""),
                     transform.get("logic", ""),
                     item.get("risk", ""),
-                    "; ".join(item.get("gaps") or []),
-                    ", ".join(rule.get("rule_id", "") for rule in rules),
+                    "; ".join(coerce_str_list(item.get("gaps"))),
+                    ", ".join(str(rule.get("rule_id", "")) for rule in rules),
                     "Yes" if item.get("requires_review") else "No",
                 ]
             )

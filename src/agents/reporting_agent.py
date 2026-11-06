@@ -3,6 +3,7 @@ from collections import Counter
 
 from src.config import adb_runtime_context
 from src.graph.state import AgentState
+from src.utils.llm_json import coerce_str_list, coerce_text
 
 
 def _execution_summary(state: AgentState) -> dict[str, int]:
@@ -24,6 +25,10 @@ def format_qa_report(state: AgentState) -> AgentState:
         f"- Structured test cases: {len(state.get('test_cases') or [])}",
         f"- Mapping Agent SQL plan items: {len(state.get('sql_test_plan') or [])}",
     ]
+    etl_plan = state.get("etl_agent_plan") or []
+    if etl_plan:
+        covered = sum(item.get("status") == "covered" for item in etl_plan)
+        lines.append(f"- ETL Agent category coverage: {covered}/{len(etl_plan)} categories supported")
     if summary:
         lines.append(f"- Execution summary: {', '.join(f'{k}: {v}' for k, v in summary.items())}")
     lines.extend(
@@ -39,16 +44,22 @@ def format_qa_report(state: AgentState) -> AgentState:
             f"- Catalog: {spec.get('catalog') or adb_runtime_context().get('catalog') or 'MISSING'}",
             "",
             "## Analyst Notes",
-            state.get("analyst_notes") or "None",
+            coerce_text(state.get("analyst_notes")) or "None",
             "",
             "## Missing Information",
         ]
     )
 
-    missing = state.get("missing_information") or []
+    missing = coerce_str_list(state.get("missing_information"))
     lines.extend([f"- {item}" for item in missing] or ["- None identified"])
+    if etl_plan:
+        lines.extend(["", "## ETL Agent Coverage"])
+        for item in etl_plan:
+            status = str(item.get("status") or "gap").upper()
+            detail = item.get("evidence") or item.get("gap") or ""
+            lines.append(f"- {item.get('category')}: **{status}** — {detail}")
     lines.extend(["", "## Assumptions"])
-    assumptions = state.get("assumptions") or []
+    assumptions = coerce_str_list(state.get("assumptions"))
     lines.extend([f"- {item}" for item in assumptions] or ["- None listed"])
 
     kpi_normalization = state.get("kpi_normalization") or {}
@@ -62,15 +73,16 @@ def format_qa_report(state: AgentState) -> AgentState:
                 f"- Rejected during normalization: {len(kpi_normalization.get('rejected_queries') or [])}",
             ]
         )
-        if kpi_normalization.get("global_notes"):
+        global_notes = coerce_str_list(kpi_normalization.get("global_notes"))
+        if global_notes:
             lines.append("- Global notes:")
-            lines.extend([f"  - {note}" for note in kpi_normalization["global_notes"]])
+            lines.extend([f"  - {note}" for note in global_notes])
         for entry in kpi_normalization.get("queries") or []:
-            if not entry.get("fixes_applied"):
+            fixes = coerce_str_list(entry.get("fixes_applied"))
+            if not fixes:
                 continue
             lines.append(
-                f"- {entry.get('kpi_id', '')} ({entry.get('kpi_name', '')}): "
-                + "; ".join(entry["fixes_applied"])
+                f"- {entry.get('kpi_id', '')} ({entry.get('kpi_name', '')}): " + "; ".join(fixes)
             )
 
     mapping_analysis = state.get("mapping_analysis") or {}
@@ -89,8 +101,10 @@ def format_qa_report(state: AgentState) -> AgentState:
             source = item.get("source") or {}
             target = item.get("target") or {}
             transform = item.get("transformation") or {}
-            rule_ids = ", ".join(rule.get("rule_id", "") for rule in (item.get("validation_rules") or []))
-            gaps = "; ".join(item.get("gaps") or []) or "None"
+            rule_ids = ", ".join(
+                str(rule.get("rule_id", "")) for rule in (item.get("validation_rules") or [])
+            )
+            gaps = "; ".join(coerce_str_list(item.get("gaps"))) or "None"
             lines.append(
                 f"- {item.get('mapping_id')}: {source.get('column')} → {target.get('column')} "
                 f"({transform.get('type')}, risk {item.get('risk')}) | rules {rule_ids or 'n/a'} | gaps: {gaps}"
@@ -113,7 +127,7 @@ def format_qa_report(state: AgentState) -> AgentState:
     if artifacts.get("requirement_traceability_matrix"):
         lines.extend(["", "## Requirement Traceability Matrix"])
         for item in artifacts["requirement_traceability_matrix"]:
-            test_ids = ", ".join(item.get("test_case_ids") or [])
+            test_ids = ", ".join(coerce_str_list(item.get("test_case_ids")))
             lines.append(
                 f"- {item.get('requirement_id', '')}: {item.get('coverage_status', '')} "
                 f"→ {test_ids or 'No linked tests'}"

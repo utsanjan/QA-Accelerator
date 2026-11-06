@@ -27,6 +27,34 @@ def extract_llm_text(content: Any) -> str:
     return str(content)
 
 
+def coerce_text(value: Any, *, separator: str = "\n") -> str:
+    """Flatten an LLM field into plain text. Models often return a list where a string is expected."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        parts = [coerce_text(item, separator=separator) for item in value]
+        return separator.join(part for part in parts if part)
+    if isinstance(value, dict):
+        parts = [f"{key}: {coerce_text(item, separator=' ')}" for key, item in value.items()]
+        return separator.join(part for part in parts if part)
+    return str(value)
+
+
+def coerce_str_list(value: Any) -> list[str]:
+    """Normalize an LLM field into a list of strings, without splitting a bare string into characters."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, (list, tuple, set)):
+        items = [coerce_text(item, separator=" ").strip() for item in value]
+        return [item for item in items if item]
+    text = coerce_text(value).strip()
+    return [text] if text else []
+
+
 def parse_llm_json(content: Any) -> dict[str, Any]:
     text = extract_llm_text(content).strip()
     if text.startswith("```"):

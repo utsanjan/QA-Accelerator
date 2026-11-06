@@ -61,6 +61,7 @@ class AgentState(TypedDict, total=False):
     mapping_payload: dict[str, Any]
     mapping_analysis: dict[str, Any]
     sql_test_plan: list[dict[str, Any]]
+    etl_agent_plan: list[dict[str, Any]]
     draft_id: str
     spec_id: str
     spec_name: str

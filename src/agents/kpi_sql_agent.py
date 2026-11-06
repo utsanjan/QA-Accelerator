@@ -2,7 +2,7 @@ import json
 from typing import Any
 from src.config import adb_runtime_context
 from src.prompts.kpi_logic_prompts import KPI_SQL_NORMALIZATION_PROMPT, KPI_SQL_NORMALIZER_SYSTEM_PROMPT
-from src.utils.llm_json import invoke_llm_json
+from src.utils.llm_json import coerce_str_list, invoke_llm_json
 from src.utils.sql_safety import is_select_only, validate_sql_test
 
 BATCH_SIZE = 8
@@ -63,7 +63,7 @@ def normalize_kpi_sql_queries(
         if not entry.get("runnable", True):
             rejected.append(
                 f"{entry.get('kpi_id', f'KPI-{index}')}: not runnable — "
-                + "; ".join(entry.get("issues_remaining") or ["normalization failed"])
+                + "; ".join(coerce_str_list(entry.get("issues_remaining")) or ["normalization failed"])
             )
             continue
 

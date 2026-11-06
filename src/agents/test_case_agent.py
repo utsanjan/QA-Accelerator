@@ -1,10 +1,14 @@
 import json
+import logging
 from typing import Any
 
 from src.models.test_case import StructuredTestCase
 from src.prompts.test_case_prompts import TEST_CASE_AGENT_SYSTEM_PROMPT, TEST_CASE_GENERATION_PROMPT
 from src.graph.state import AgentState
 from src.utils.llm_json import invoke_llm_json
+
+
+logger = logging.getLogger(__name__)
 
 
 def _has_requirement_context(state: AgentState) -> bool:
@@ -166,6 +170,7 @@ def generate_test_cases(state: AgentState) -> AgentState:
     result: dict[str, Any] = {}
 
     if _has_requirement_context(state):
+        logger.info("Generating functional test cases from requirement context...")
         generated = _generate_functional_test_cases(state)
         result["test_cases"] = generated["test_cases"]
         result["test_case_artifacts"] = generated["test_case_artifacts"]
@@ -186,4 +191,5 @@ def generate_test_cases(state: AgentState) -> AgentState:
             case for case in etl_cases if case["test_id"] not in existing_ids
         ]
 
+    logger.info("Test case agent produced %d case(s)", len(result.get("test_cases") or []))
     return result

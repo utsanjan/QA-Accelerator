@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -24,6 +25,9 @@ from src.review.review_store import ReviewStore
 from src.utils.output_paths import safe_write_text
 from src.utils.run_logger import RunLogger
 from src.utils.workflow_mode import detect_workflow_mode
+
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_project_path(path_str: str) -> Path:
@@ -419,6 +423,7 @@ class QAWorkflowService:
         mapping_analysis: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         run_id = str(uuid4())
+        logger.info("Starting ETL QA run %s for spec '%s'", run_id[:8], spec_name or "unnamed")
         agent = build_qa_sql_agent()
         invoke_state: dict[str, Any] = {
             "etl_spec": etl_spec,
@@ -470,6 +475,7 @@ class QAWorkflowService:
                 result.update(execute_on_adb(result))
             result.update(format_qa_report(result))
 
+        logger.info("Writing QA report and Excel pack...")
         report_file = report_path or Path("output") / "qa_validation_pack.md"
         report_file = safe_write_text(report_file, result.get("qa_report") or "No report generated.")
 
@@ -508,6 +514,12 @@ class QAWorkflowService:
         result["report_path"] = str(report_file)
         result["test_cases_path"] = str(excel_file) if excel_file else None
         result["spec_name"] = spec_name
+        logger.info(
+            "Run %s finished: %d SQL test(s), %d test case(s)",
+            run_id[:8],
+            len(result.get("tests") or []),
+            len(result.get("test_cases") or []),
+        )
         return result
 
     def run_functional_validation(
@@ -525,6 +537,7 @@ class QAWorkflowService:
         kpi_normalization: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         run_id = str(uuid4())
+        logger.info("Starting functional QA run %s for '%s'", run_id[:8], spec_name)
         state: dict[str, Any] = {
             "etl_spec": etl_spec or {},
             "spec_name": spec_name,

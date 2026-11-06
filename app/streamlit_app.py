@@ -1,4 +1,3 @@
-import importlib
 import sys
 from pathlib import Path
 
@@ -19,34 +18,53 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-_PARSER_MODULES = (
-    "src.parsers.tabular",
-    "src.parsers.stm_extract",
-    "src.parsers.excel_mapping_parser",
-    "src.parsers.docx_mapping_parser",
-    "src.parsers.mapping_file",
-    "src.prompts.mapping_prompts",
-    "src.agents.mapping_agent",
-    "src.review.review_store",
-    "src.services.qa_workflow",
-    "app.state.session",
-    "app.views.import_stories",
-    "app.views.build_spec",
-    "app.views.review_draft",
-    "app.components.mapping_analysis",
-    "app.views",
-)
+_WATCHED_DIRS = (ROOT / "src", ROOT / "app")
+_THIS_MODULE = __name__
 
-for _name in _PARSER_MODULES:
-    _module = sys.modules.get(_name)
-    if _module is not None:
-        importlib.reload(_module)
-st.session_state.pop("qa_service", None)
 
+def _source_fingerprint() -> tuple[int, float]:
+    """Cheap change detector across the project's Python sources."""
+    count = 0
+    newest = 0.0
+    for directory in _WATCHED_DIRS:
+        for path in directory.rglob("*.py"):
+            try:
+                newest = max(newest, path.stat().st_mtime)
+            except OSError:
+                continue
+            count += 1
+    return count, newest
+
+
+def _purge_project_modules() -> None:
+    """Drop cached project modules so the next import picks up edited source.
+
+    Streamlit reruns the entrypoint but keeps `sys.modules`, so editing a module
+    that the entrypoint does not re-import leaves the old code running.
+    """
+    for name in list(sys.modules):
+        if name == _THIS_MODULE:
+            continue
+        root = name.split(".")[0]
+        if root in {"src", "app"}:
+            del sys.modules[name]
+
+
+_fingerprint = _source_fingerprint()
+if st.session_state.get("_source_fingerprint") != _fingerprint:
+    st.session_state["_source_fingerprint"] = _fingerprint
+    _purge_project_modules()
+    st.session_state.pop("qa_service", None)
+
+from app.components.run_log import install_log_capture, render_log_button
+from app.components.background_tasks import poll as poll_background_tasks
+from app.components.background_tasks import render as render_background_tasks
 from app.components.sidebar import render_sidebar
 from app.components.theme import apply_theme
 from app.state.session import get_service, init_session
 from app.views import PAGES
+
+install_log_capture()
 
 apply_theme()
 init_session()
@@ -55,5 +73,8 @@ with st.spinner("Starting QA workspace..."):
 
 with st.sidebar:
     page = render_sidebar()
+    render_log_button(key_prefix="sidebar_log")
 
+poll_background_tasks()
+render_background_tasks()
 PAGES[page]()

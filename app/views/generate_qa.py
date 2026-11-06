@@ -1,11 +1,14 @@
-from pathlib import Path
+import logging
 
 import streamlit as st
 
 from app.components.mapping_analysis import render_mapping_downloads
 from app.components.progress_stepper import render_stepper
+from app.components.run_log import render_log_button
 from app.components.theme import page_header
-from app.state.session import OUTPUT, get_service, set_validation_result
+from app.state.session import get_qa_generation_job, get_service, set_validation_result, start_qa_generation
+
+logger = logging.getLogger(__name__)
 
 
 def render() -> None:
@@ -45,7 +48,15 @@ def render() -> None:
 
     render_mapping_downloads(draft, key_prefix="generate_mapping")
 
-    if st.button("Approve & Generate QA Pack", type="primary"):
+    job = get_qa_generation_job()
+    if job and not job["future"].done():
+        st.info("QA pack generation is running in the background. You can use the sidebar to visit another page.")
+
+    if st.button(
+        "Approve & Generate QA Pack",
+        type="primary",
+        disabled=bool(job and not job["future"].done()),
+    ):
         try:
             if workflow_mode != "functional":
                 import json
@@ -54,15 +65,27 @@ def render() -> None:
                 if service._is_complete_etl_spec(edited):
                     service.update_draft(draft_id, edited)
 
-            OUTPUT.mkdir(parents=True, exist_ok=True)
-            with st.spinner("Generating QA pack — this may take 1–2 minutes..."):
-                result = service.approve_and_validate(
-                    draft_id,
-                    execute_queries=execute_on_adb and include_sql,
-                    report_path=OUTPUT / "qa_validation_pack.md",
-                    test_cases_path=OUTPUT / "qa_test_cases.xlsx",
-                )
+            start_qa_generation(
+                service,
+                draft_id,
+                execute_queries=execute_on_adb and include_sql,
+                include_functional=include_functional,
+                include_sql=include_sql,
+            )
+            st.success("QA pack generation started in the background.")
+            st.rerun()
+        except RuntimeError as exc:
+            st.error(str(exc))
+        except Exception as exc:
+            logger.exception("Could not start QA pack generation")
+            st.error(str(exc))
+            st.caption("Open the activity log below for the full traceback.")
+            render_log_button(key_prefix="generate_error_log", label="Activity log")
 
+    job = get_qa_generation_job()
+    if job and job["future"].done() and not job.get("processed"):
+        try:
+            result = job["future"].result()
             validation = result["validation"]
             if not include_functional:
                 validation["test_cases"] = [
@@ -74,16 +97,21 @@ def render() -> None:
                 validation["tests"] = []
 
             set_validation_result(validation)
+            job["processed"] = True
             st.success("QA pack generated successfully.")
             st.session_state["current_page"] = "Results & Exports"
             st.rerun()
         except PermissionError:
+            logger.exception("QA pack generation blocked by a locked output file")
             st.error(
                 "Could not write output files. Close `output/qa_test_cases.xlsx` in Excel "
                 "if it is open, then try again."
             )
         except Exception as exc:
+            logger.exception("QA pack generation failed")
             st.error(str(exc))
+            st.caption("Open the activity log below for the full traceback.")
+            render_log_button(key_prefix="generate_error_log", label="Activity log")
 
     if st.session_state.get("last_validation_result"):
         result = st.session_state["last_validation_result"]

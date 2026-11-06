@@ -1,6 +1,8 @@
 import json
+import logging
 
 from src.config import adb_runtime_context, get_databricks_settings
+from src.agents.etl_agent import build_etl_test_plan
 from src.graph.state import AgentState, QueryExecution, ValidationTest
 from src.integrations.databricks_client import execute_select
 from src.mapping.sql_test_plan import (
@@ -10,8 +12,11 @@ from src.mapping.sql_test_plan import (
     plan_for_llm,
 )
 from src.prompts import ANALYZE_PROMPT, GENERATE_TESTS_PROMPT, SQL_AGENT_SYSTEM_PROMPT
-from src.utils.llm_json import invoke_llm_json
+from src.utils.llm_json import coerce_str_list, coerce_text, invoke_llm_json
 from src.utils.sql_safety import has_unresolved_placeholders, validate_sql_test
+
+
+logger = logging.getLogger(__name__)
 
 
 def _llm_json(prompt: str) -> dict:
@@ -37,28 +42,35 @@ def _mapping_prompt_fields(state: AgentState) -> tuple[str, str, list[dict]]:
 
 def analyze_spec(state: AgentState) -> AgentState:
     mapping_context, sql_test_plan, plan = _mapping_prompt_fields(state)
+    etl_agent_plan = build_etl_test_plan(
+        state.get("etl_spec") or {},
+        state.get("mapping_analysis") or {},
+    )
+    logger.info("Analyzing ETL spec (%d Mapping Agent plan items)...", len(plan))
     payload = _llm_json(
         ANALYZE_PROMPT.format(
             etl_spec=_spec_json(state),
             adb_context=json.dumps(adb_runtime_context(), indent=2),
             mapping_context=mapping_context,
             sql_test_plan=sql_test_plan,
+            etl_agent_plan=json.dumps(etl_agent_plan, indent=2),
         )
     )
-    validation_plan = payload.get("validation_plan") or []
+    validation_plan = coerce_str_list(payload.get("validation_plan"))
     if plan and not validation_plan:
         validation_plan = [
             f"{item['mapping_id']}/{item['rule_id']}: {item['what_to_test']}" for item in plan[:25]
         ]
-    missing = list(payload.get("missing_information") or [])
     analysis = state.get("mapping_analysis") or {}
-    missing.extend(analysis.get("summary_gaps") or [])
+    missing = coerce_str_list(payload.get("missing_information")) + coerce_str_list(analysis.get("summary_gaps"))
+    logger.info("Spec analysis complete: %d gap(s), %d plan step(s)", len(missing), len(validation_plan))
     return {
-        "analyst_notes": payload.get("analyst_notes", ""),
+        "analyst_notes": coerce_text(payload.get("analyst_notes")),
         "missing_information": list(dict.fromkeys(missing)),
-        "assumptions": payload.get("assumptions", []),
+        "assumptions": coerce_str_list(payload.get("assumptions")),
         "validation_plan": validation_plan,
         "sql_test_plan": plan,
+        "etl_agent_plan": etl_agent_plan,
     }
 
 
@@ -68,6 +80,7 @@ def generate_sql_tests(state: AgentState) -> AgentState:
         plan = list(state.get("sql_test_plan") or [])
         sql_test_plan_json = json.dumps(plan_for_llm(plan) if plan else [], indent=2)
 
+    logger.info("Generating validation SQL...")
     payload = _llm_json(
         GENERATE_TESTS_PROMPT.format(
             etl_spec=_spec_json(state),
@@ -78,6 +91,7 @@ def generate_sql_tests(state: AgentState) -> AgentState:
             validation_plan=json.dumps(state.get("validation_plan", []), indent=2),
             mapping_context=mapping_context,
             sql_test_plan=sql_test_plan_json,
+            etl_agent_plan=json.dumps(state.get("etl_agent_plan") or [], indent=2),
         )
     )
     llm_tests = payload.get("tests") or []
@@ -89,12 +103,15 @@ def generate_sql_tests(state: AgentState) -> AgentState:
 
     missing = list(
         dict.fromkeys(
-            (state.get("missing_information") or [])
-            + list(payload.get("missing_information") or [])
+            coerce_str_list(state.get("missing_information"))
+            + coerce_str_list(payload.get("missing_information"))
             + uncovered
         )
     )
-    assumptions = list(dict.fromkeys((state.get("assumptions") or []) + payload.get("assumptions", [])))
+    assumptions = list(
+        dict.fromkeys(coerce_str_list(state.get("assumptions")) + coerce_str_list(payload.get("assumptions")))
+    )
+    logger.info("Generated %d SQL test(s); %d plan item(s) had no SQL", len(tests), len(uncovered))
     return {
         "tests": tests,
         "missing_information": missing,
@@ -112,6 +129,7 @@ def safety_check(state: AgentState) -> AgentState:
             approved.append(test)
         else:
             rejected.append(reason)
+    logger.info("Safety check: %d approved, %d blocked", len(approved), len(rejected))
     return {"tests": approved, "rejected_queries": rejected}
 
 
@@ -128,6 +146,7 @@ def execute_on_adb(state: AgentState) -> AgentState:
     results: list[QueryExecution] = []
 
     if state.get("execute_queries") is False:
+        logger.info("Databricks execution disabled; marking %d test(s) SKIPPED", len(state.get("tests") or []))
         for test in state.get("tests") or []:
             results.append(
                 {
@@ -149,6 +168,7 @@ def execute_on_adb(state: AgentState) -> AgentState:
             )
         return {"execution_results": results}
 
+    logger.info("Executing %d query/queries on Azure Databricks...", len(state.get("tests") or []))
     for test in state.get("tests") or []:
         test_id = test.get("test_id", "UNKNOWN")
         sql_query = (test.get("sql_query") or "").strip()
@@ -177,6 +197,7 @@ def execute_on_adb(state: AgentState) -> AgentState:
                 }
             )
         except Exception as exc:
+            logger.warning("%s failed on Databricks: %s", test_id, exc)
             results.append({"test_id": test_id, "status": "ERROR", "error": str(exc)})
 
     return {"execution_results": results}

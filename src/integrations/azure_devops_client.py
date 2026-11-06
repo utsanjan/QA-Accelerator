@@ -18,6 +18,18 @@ class AzureDevOpsClient:
     def _url(self, path: str) -> str:
         return f"{self.settings.base_url}/{self.settings.organization}/{path.lstrip('/')}"
 
+    def _raise_for_status(self, response: httpx.Response) -> None:
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if response.status_code == 401:
+                raise RuntimeError(
+                    "Azure DevOps rejected the PAT (401 Unauthorized). Create or rotate a PAT "
+                    "with access to this organization, update AZURE_DEVOPS_PAT in .env, and "
+                    "restart the application."
+                ) from exc
+            raise
+
     def _get(self, path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         response = httpx.get(
             self._url(path),
@@ -25,7 +37,7 @@ class AzureDevOpsClient:
             params=params,
             timeout=self.settings.timeout_seconds,
         )
-        response.raise_for_status()
+        self._raise_for_status(response)
         return response.json()
 
     def _post(self, path: str, payload: dict[str, Any], *, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -36,7 +48,7 @@ class AzureDevOpsClient:
             json=payload,
             timeout=self.settings.timeout_seconds,
         )
-        response.raise_for_status()
+        self._raise_for_status(response)
         return response.json()
 
     def test_connection(self) -> dict[str, Any]:
@@ -106,5 +118,5 @@ class AzureDevOpsClient:
 
     def download_attachment(self, url: str) -> bytes:
         response = httpx.get(url, headers=self._headers, timeout=self.settings.timeout_seconds)
-        response.raise_for_status()
+        self._raise_for_status(response)
         return response.content

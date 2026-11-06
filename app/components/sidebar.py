@@ -19,6 +19,7 @@ NAV_GROUPS: dict[str, list[tuple[str, str, str]]] = {
         ("Run History", "History", "Past QA runs"),
     ],
     "System": [
+        ("Background Tasks", "Tasks", "Monitor background jobs"),
         ("Settings", "Settings", "Connections and health"),
     ],
 }
@@ -85,6 +86,7 @@ def render_sidebar() -> str:
     draft_id = st.session_state.get("draft_id", "")
     workflow_mode = st.session_state.get("workflow_mode", "etl")
     last = st.session_state.get("last_validation_result") or {}
+    generation_job = st.session_state.get("qa_generation_job")
     step_index = _workflow_index(page)
 
     status_bits: list[str] = []
@@ -110,6 +112,17 @@ def render_sidebar() -> str:
         status_bits.append(
             '<div class="sidebar-status-row"><span>Test cases</span>'
             f"<strong>{len(last['test_cases'])}</strong></div>"
+        )
+    if generation_job:
+        if not generation_job["future"].done():
+            job_status = "Running in background"
+        elif generation_job.get("status") == "failed":
+            job_status = "Failed"
+        else:
+            job_status = "Ready to review"
+        status_bits.append(
+            '<div class="sidebar-status-row"><span>QA pack</span>'
+            f"<strong>{html.escape(job_status)}</strong></div>"
         )
 
     st.markdown(
