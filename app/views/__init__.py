@@ -1,4 +1,5 @@
 from . import (
+    about,
     background_tasks,
     build_spec,
     generate_qa,
@@ -24,4 +25,5 @@ PAGES = {
     "Run History": run_history.render,
     "Background Tasks": background_tasks.render,
     "Settings": settings.render,
+    "About": about.render,
 }

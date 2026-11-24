@@ -1,5 +1,65 @@
 """Streamlit theme - Material 3 Expressive Dark design system."""
 
+from __future__ import annotations
+
+import json
+import zipfile
+from functools import lru_cache
+from pathlib import Path
+from urllib.parse import quote
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _loading_lottie_path() -> Path | None:
+    """App loading animation lives at ``assets/loading.lottie``."""
+    path = _REPO_ROOT / "assets" / "loading.lottie"
+    return path if path.is_file() else None
+
+
+@lru_cache(maxsize=4)
+def _loading_lottie_animation(path_str: str, mtime_ns: int) -> dict | None:
+    """Load the first animation JSON from a dotLottie zip."""
+    try:
+        with zipfile.ZipFile(path_str) as archive:
+            names = [
+                name
+                for name in archive.namelist()
+                if name.startswith("animations/") and name.endswith(".json")
+            ]
+            if not names:
+                return None
+            return json.loads(archive.read(names[0]))
+    except (OSError, zipfile.BadZipFile, json.JSONDecodeError, KeyError):
+        return None
+
+
+def _favicon_path() -> Path:
+    return _REPO_ROOT / "assets" / "favicon.svg"
+
+
+@lru_cache(maxsize=4)
+def _favicon_data_uri(mtime_ns: int) -> str:
+    """Encode favicon.svg as a CSS/JS data URI."""
+    svg = " ".join(_favicon_path().read_text(encoding="utf-8").split())
+    return "data:image/svg+xml," + quote(svg, safe="")
+
+
+def _brand_logo_style() -> str:
+    path = _favicon_path()
+    if not path.is_file():
+        return ""
+    uri = _favicon_data_uri(path.stat().st_mtime_ns)
+    return (
+        "<style>.sidebar-brand-icon{"
+        f'background-image:url("{uri}") !important;'
+        "background-size:cover !important;"
+        "background-position:center !important;"
+        "background-repeat:no-repeat !important;"
+        "}</style>"
+    )
+
+
 THEME_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700;800&display=swap');
@@ -11,6 +71,10 @@ THEME_CSS = """
 :root {
   color-scheme: dark;
   --ui-font: "Google Sans Flex", "Google Sans", "Segoe UI", sans-serif;
+  /* UI density ≈ Chrome 80% zoom (applied to scrollable content, not html). */
+  --app-zoom: 0.8;
+  /* Default sidebar width (Streamlit default is ~21rem / too wide for this nav). */
+  --app-sidebar-width: 16rem;
 
   /* Surface elevation roles */
   --md-background:               #0d1117;
@@ -68,11 +132,32 @@ THEME_CSS = """
 
   /* Motion curves */
   --spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring-ease:cubic-bezier(0.34, 1.56, 0.64, 1);
   --spring-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-std:   cubic-bezier(0.2, 0, 0, 1);
   --dur-quick:  120ms;
   --dur-normal: 250ms;
   --dur-emph:   400ms;
+  --motion-quick:       120ms;
+  --motion-normal:      250ms;
+  --motion-emphasized:  400ms;
+
+  /* M3 Expressive Type Scale */
+  --type-display-L:     clamp(36px, 4.2vw, 52px);
+  --type-display-M:     clamp(28px, 3.5vw, 40px);
+  --type-display-S:     clamp(24px, 3.0vw, 32px);
+  --type-headline-L:    clamp(20px, 2.5vw, 28px);
+  --type-headline-M:    20px;
+  --type-headline-S:    18px;
+  --type-title-L:       16px;
+  --type-title-M:       14px;
+  --type-title-S:       13px;
+  --type-body-L:        15px;
+  --type-body-M:        14px;
+  --type-body-S:        12px;
+  --type-label-L:       13px;
+  --type-label-M:       11px;
+  --type-label-S:       10px;
 
   /* Shape scale */
   --shape-xs:   8px;
@@ -94,32 +179,64 @@ THEME_CSS = """
 .stApp li, .stMarkdown,
 .sidebar-brand, .sidebar-brand-title, .sidebar-brand-eyebrow, .sidebar-tagline,
 .qa-page-header, .qa-page-header h1, .qa-page-eyebrow, .qa-page-caption,
-.stCaption, .stButton > button {
+.stCaption, .stButton button {
   font-family: var(--ui-font) !important;
 }
+/* Native Streamlit collapse / expand controls. Do not force width or
+   transform on the sidebar while it is collapsed — that locked it open. */
+[data-testid="stSidebarHeader"] {
+  position: absolute !important;
+  top: 12px !important;
+  right: 8px !important;
+  left: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  width: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  border: none !important;
+  z-index: 60 !important;
+}
+[data-testid="stLogoSpacer"] {
+  display: none !important;
+}
 [data-testid="stSidebarCollapseButton"],
-[data-testid="stSidebarCollapseButton"] button {
-  display: none !important;
-}
 [data-testid="stExpandSidebarButton"] {
-  position: relative !important;
-  width: 36px !important;
-  min-width: 36px !important;
-  height: 36px !important;
-  overflow: hidden !important;
+  display: flex !important;
+  visibility: visible !important;
+  width: 32px !important;
+  height: 32px !important;
 }
-[data-testid="stExpandSidebarButton"] * {
-  display: none !important;
-}
-[data-testid="stExpandSidebarButton"]::before {
-  content: "»";
-  font-family: var(--ui-font), "Segoe UI", sans-serif !important;
-  font-size: 20px !important;
-  font-weight: 600 !important;
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="stExpandSidebarButton"] button,
+[data-testid="stSidebarCollapseButton"] [data-testid="stBaseButton-headerNoPadding"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
   color: #c5d4e4 !important;
-  line-height: 36px !important;
-  display: block !important;
-  text-align: center !important;
+}
+[data-testid="stSidebarCollapseButton"] button:hover,
+[data-testid="stExpandSidebarButton"] button:hover {
+  background: rgba(125, 211, 252, 0.12) !important;
+  color: #f5fbff !important;
+}
+[data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"],
+[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"] {
+  font-family: "Material Symbols Rounded", sans-serif !important;
+  font-size: 20px !important;
+  line-height: 1 !important;
+  color: inherit !important;
 }
 code, pre, kbd, .val-ui, .val-db, .conn-detail {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace !important;
@@ -130,14 +247,21 @@ code, pre, kbd, .val-ui, .val-db, .conn-detail {
   min-height: 100vh;
 }
 
-/* 80% scale on inner content only. Never widen panes — that spilled
-   the sidebar over the main page. */
-[data-testid="stSidebarUserContent"],
+/* ≈ Chrome 80% zoom without clipping.
+   Do NOT put zoom on html/body/.stApp — Streamlit uses a fixed-height
+   viewport with overflow hidden, so document zoom chops the main pane
+   (no scrollbar). Scale main content only — zooming the sidebar made
+   the nav look sparse and tiny inside a fixed-width rail. */
 [data-testid="stMainBlockContainer"] {
-  zoom: 0.8 !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
+  zoom: var(--app-zoom, 0.8);
+}
+
+/* Let the main pane scroll when content is taller than the window. */
+[data-testid="stAppViewContainer"] section.main,
+[data-testid="stMain"],
+.stMain {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 
 /* 5-layer expressive ambient gradient */
@@ -155,6 +279,14 @@ code, pre, kbd, .val-ui, .val-db, .conn-detail {
 header[data-testid="stHeader"] {
   background: transparent !important;
   box-shadow: none !important;
+  /* Full-width header was eating clicks on the sidebar collapse control. */
+  pointer-events: none;
+}
+header[data-testid="stHeader"] button,
+header[data-testid="stHeader"] a,
+header[data-testid="stHeader"] [data-testid="stToolbar"],
+header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {
+  pointer-events: auto;
 }
 
 
@@ -168,8 +300,18 @@ header[data-testid="stHeader"] {
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   overflow: hidden !important;
-  transform: none !important;
-  zoom: 1 !important;
+  position: relative !important;
+  z-index: 100002 !important;
+}
+[data-testid="stSidebar"][aria-expanded="true"] {
+  width: var(--app-sidebar-width) !important;
+  min-width: var(--app-sidebar-width) !important;
+  max-width: var(--app-sidebar-width) !important;
+}
+[data-testid="stSidebar"][aria-expanded="true"] > div:first-child,
+[data-testid="stSidebar"][aria-expanded="true"] [data-testid="stSidebarContent"] {
+  width: var(--app-sidebar-width) !important;
+  min-width: var(--app-sidebar-width) !important;
 }
 [data-testid="stSidebar"] hr { border-color: var(--outline-variant, #26333f) !important; margin: 12px 0 !important; }
 
@@ -181,29 +323,37 @@ header[data-testid="stHeader"] {
 [data-testid="stSidebarUserContent"] { padding-top: 0.35rem !important; }
 [data-testid="stSidebar"] > div > div > div:first-child { margin-top:0 !important; padding-top:0 !important; }
 
-[data-testid="stSidebarHeader"] {
-  position: static !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: visible !important;
-  border: none !important;
+.sidebar-collapse-slot {
+  visibility: hidden;
+  pointer-events: none;
 }
 
-.sidebar-brand { display:flex; align-items:center; gap:12px; margin-top:8px; margin-bottom:6px; width:max-content; max-width:100%; }
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.sidebar-brand-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .sidebar-collapse-slot {
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  margin-left: 6px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
   cursor: pointer;
   color: #c5d4e4;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1;
   user-select: none;
@@ -211,54 +361,97 @@ header[data-testid="stHeader"] {
 .sidebar-collapse-slot::before { content: "«"; }
 .sidebar-collapse-slot:hover { background: rgba(125, 211, 252, 0.12); color: #f5fbff; }
 .sidebar-brand-icon {
-  width:44px; height:44px; border-radius:18px;
-  display:flex; align-items:center; justify-content:center;
-  font-size:13px; font-weight:800; letter-spacing:0.04em;
-  color:var(--on-primary-container);
-  background:linear-gradient(145deg, #0e5080, #052035);
-  border:1px solid rgba(56,189,248,0.40);
-  box-shadow:0 0 20px rgba(56,189,248,0.15), 0 8px 20px rgba(0,0,0,0.3);
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  flex: 0 0 40px;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(145deg, #0e5080, #052035);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 1px solid rgba(56, 189, 248, 0.40);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.15), 0 8px 20px rgba(0, 0, 0, 0.3);
 }
-.sidebar-brand-eyebrow { color:var(--primary); font-size:10px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase; }
-.sidebar-brand-title { color:var(--text); font-size:20px; font-weight:700; line-height:1.1; }
-.sidebar-tagline { color:var(--muted); font-size:12px; line-height:1.45; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--outline-variant); }
-.sidebar-footer { margin-top:16px; padding-top:12px; border-top:1px solid var(--outline-variant,#26333f); color:var(--muted,#92a1b5); font-size:11px; text-align:center; }
+.sidebar-brand-eyebrow { color:var(--primary); font-size:10px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; }
+.sidebar-brand-title { color:var(--text); font-size:18px; font-weight:700; line-height:1.15; }
+.sidebar-tagline { color:var(--muted); font-size:11px; line-height:1.4; margin: 0 0 12px; padding-bottom:10px; border-bottom:1px solid var(--outline-variant); }
+.sidebar-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--outline-variant, #26333f);
+  color: var(--muted, #92a1b5);
+  font-size: 11px;
+  text-align: center;
+}
 
-.sb-group-label, .sidebar-section-label {
-  color: var(--muted, #92a1b5); font-size: 11px; font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  margin: 14px 4px 6px;
+.sb-group-head,
+.sidebar-section-label {
+  display: block !important;
+  box-sizing: border-box;
+  color: var(--muted, #92a1b5);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0;
+  padding: 10px 8px 6px;
+  line-height: 1.2;
+  min-height: 28px;
+}
+.sb-group-head-split {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--outline-variant, #26333f);
+}
+.sb-session-sep {
+  height: 1px;
+  margin: 10px 8px 8px;
+  background: var(--outline-variant, #26333f);
+}
+[data-testid="stSidebar"] .stElementContainer:has(.sb-group-head),
+[data-testid="stSidebar"] .stElementContainer:has(.sidebar-section-label),
+[data-testid="stSidebar"] .stElementContainer:has(.sidebar-brand) {
+  height: auto !important;
+  min-height: 28px !important;
+  overflow: visible !important;
 }
 .sidebar-status-card {
   background: var(--md-surface-container, #1a2330);
   border: 1px solid var(--outline-variant, #26333f);
-  border-radius: 14px; padding: 10px 12px; margin: 8px 0 12px;
+  border-radius: 12px; padding: 8px 12px; margin: 6px 0 8px;
 }
 .sidebar-status-row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; font-size: 12px; color: var(--muted, #92a1b5); padding: 4px 0;
+  gap: 8px; font-size: 12px; color: var(--muted, #92a1b5); padding: 3px 0;
 }
 .sidebar-status-row code {
   background: var(--md-surface-container-high, #202c3c); color: #38bdf8;
   border-radius: 6px; padding: 2px 6px; font-size: 11px;
 }
 .sidebar-status-row strong { color: var(--text, #dde4ee); font-weight: 600; }
-
-.sidebar-steps { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 14px; }
-.sidebar-step {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border-radius: 12px;
-  border: 1px solid transparent; font-size: 12px;
+.sidebar-session-compact {
+  margin: 8px 8px 2px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--outline-variant, #26333f);
+  color: var(--muted, #92a1b5);
+  font-size: 12px;
+  line-height: 1.35;
 }
-.sidebar-step.done { background: rgba(20,83,45,0.25); border-color: rgba(22,101,52,0.45); color: #86efac; }
-.sidebar-step.active { background: rgba(12,74,110,0.45); border-color: rgba(125,211,252,0.35); color: #d0eeff; }
-.sidebar-step.pending { background: #1a2330; border-color: #26333f; color: #92a1b5; }
-.sidebar-step-dot {
-  width: 22px; height: 22px; border-radius: 999px;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.06); flex-shrink: 0;
+/* Compact sidebar stack without collapsing labels into nav rows. */
+[data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {
+  gap: 2px !important;
+  row-gap: 2px !important;
 }
-.sidebar-step-label { font-weight: 600; }
+[data-testid="stSidebarUserContent"] [class*="st-key-nav_"].stElementContainer {
+  margin: 0 !important;
+  padding: 0 !important;
+}
 
 [data-testid="stSidebarNav"] { display:none !important; }
 
@@ -370,105 +563,151 @@ div[data-testid="stMetricDelta"] { color:var(--secondary) !important; font-size:
 /* ==========================================================
    BUTTONS — M3 Expressive variant system
    ========================================================== */
-.stButton > button {
+.stButton button {
   background:var(--md-surface-container-high, #202c3c) !important;
   color:#d0eeff !important;
   border:1px solid var(--outline, #3a4758) !important; border-radius:var(--shape-lg) !important;
   font-size:13px !important; font-weight:600 !important; padding:9px 22px !important;
 }
-.stButton > button:hover { background:var(--md-surface-container-highest) !important; border-color:var(--primary) !important; border-radius:var(--shape-xl) !important; color:var(--text) !important; box-shadow:0 0 0 2px rgba(56,189,248,0.15) !important; }
-.stButton > button:active { transform:scale(0.97) !important; }
-.stButton > button:focus-visible { outline:2px solid var(--primary) !important; outline-offset:2px !important; }
+.stButton button:hover { background:var(--md-surface-container-highest) !important; border-color:var(--primary) !important; border-radius:var(--shape-xl) !important; color:var(--text) !important; box-shadow:0 0 0 2px rgba(56,189,248,0.15) !important; }
+.stButton button:active { transform:scale(0.97) !important; }
+.stButton button:focus-visible { outline:2px solid var(--primary) !important; outline-offset:2px !important; }
 
-.stButton > button[kind="primary"],
-.stButton > button[data-testid="baseButton-primary"],
-.stButton > button[data-testid="stBaseButton-primary"] {
+.stButton button[kind="primary"],
+.stButton button[data-testid="baseButton-primary"],
+.stButton button[data-testid="stBaseButton-primary"] {
   background:#0b4f7a !important;
   border-color:#38bdf8 !important;
   color:#f5fbff !important;
   box-shadow:0 2px 12px rgba(3,105,161,0.35) !important;
 }
-.stButton > button[kind="primary"]:hover,
-.stButton > button[data-testid="baseButton-primary"]:hover,
-.stButton > button[data-testid="stBaseButton-primary"]:hover {
+.stButton button[kind="primary"]:hover,
+.stButton button[data-testid="baseButton-primary"]:hover,
+.stButton button[data-testid="stBaseButton-primary"]:hover {
   background:#0a5f96 !important;
   color:#ffffff !important;
 }
 
-/* Sidebar nav: Import-page button colors, rounded-rect (not pill) */
-[data-testid="stSidebar"] [data-testid="stButton"] {
-  margin: 6px 0 !important;
+/* Sidebar nav: compact left-aligned rows + Material icons + active accent */
+[data-testid="stSidebar"] [class*="st-key-nav_"] {
+  margin: 0 !important;
 }
-[data-testid="stSidebar"] [data-testid="stButton"] button,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"],
-[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"],
-[data-testid="stSidebar"] button[data-testid="baseButton-secondary"],
-[data-testid="stSidebar"] button[data-testid="baseButton-primary"],
-[data-testid="stSidebar"] button[kind="secondary"],
-[data-testid="stSidebar"] button[kind="primary"] {
+[data-testid="stSidebar"] [class*="st-key-nav_"] [data-testid="stButton"] {
+  margin: 0 !important;
+}
+[data-testid="stSidebar"] [class*="st-key-nav_"] button,
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[data-testid="stBaseButton-secondary"],
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[kind="secondary"],
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[kind="primary"] {
+  display: inline-flex !important;
+  flex-direction: row !important;
   width: 100% !important;
-  min-height: 46px !important;
-  height: 46px !important;
-  padding: 12px 20px !important;
-  border-radius: 12px !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 4px 10px 4px 8px !important;
+  gap: 8px !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
   letter-spacing: 0 !important;
-  text-align: center !important;
-  justify-content: center !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
   align-items: center !important;
-  background: #1a2836 !important;
-  border: 1px solid #4a6d88 !important;
-  color: #d7e6f3 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-left: 3px solid transparent !important;
+  color: var(--muted, #92a1b5) !important;
   box-shadow: none !important;
   line-height: 1.2 !important;
 }
-[data-testid="stSidebar"] [data-testid="stButton"] button p,
-[data-testid="stSidebar"] button[data-testid^="stBaseButton"] p,
-[data-testid="stSidebar"] button[kind] p {
-  font-size: 14px !important;
-  font-weight: 600 !important;
+[data-testid="stSidebar"] [class*="st-key-nav_"] button::before {
+  font-family: "Material Symbols Rounded", sans-serif !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 1.25em !important;
+  flex-shrink: 0 !important;
+  opacity: 0.88;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+  -webkit-font-smoothing: antialiased;
+  speak: never;
+}
+.st-key-nav_Home button::before { content: "home"; }
+.st-key-nav_Import button::before { content: "move_to_inbox"; }
+.st-key-nav_Build-ETL-Spec button::before { content: "architecture"; }
+.st-key-nav_Review-Draft button::before { content: "rate_review"; }
+.st-key-nav_Generate-QA-Pack button::before { content: "auto_awesome"; }
+.st-key-nav_Results---Exports button::before { content: "download"; }
+.st-key-nav_Test-Case-Explorer button::before { content: "checklist"; }
+.st-key-nav_Spec-Library button::before { content: "library_books"; }
+.st-key-nav_Run-History button::before { content: "history"; }
+.st-key-nav_Background-Tasks button::before { content: "pending_actions"; }
+.st-key-nav_Settings button::before { content: "settings"; }
+.st-key-nav_About button::before { content: "info"; }
+
+[data-testid="stSidebar"] [class*="st-key-nav_"] button p,
+[data-testid="stSidebar"] [class*="st-key-nav_"] button [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] [class*="st-key-nav_"] button span {
+  font-size: 12.5px !important;
+  font-weight: inherit !important;
   color: inherit !important;
   margin: 0 !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  width: auto !important;
+  flex: 1 1 auto !important;
 }
-[data-testid="stSidebar"] [data-testid="stButton"] button:hover,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]:hover,
-[data-testid="stSidebar"] button[kind="secondary"]:hover {
-  background: #223445 !important;
-  border-color: #6b8aa6 !important;
-  border-radius: 12px !important;
-  color: #ffffff !important;
+[data-testid="stSidebar"] [class*="st-key-nav_"] button:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: transparent !important;
+  border-left-color: rgba(56, 189, 248, 0.35) !important;
+  border-radius: 10px !important;
+  color: var(--text, #dde4ee) !important;
   box-shadow: none !important;
 }
-[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"],
-[data-testid="stSidebar"] button[data-testid="baseButton-primary"],
-[data-testid="stSidebar"] button[kind="primary"] {
-  background: #0c6f9e !important;
-  border: 1px solid #1aa3d6 !important;
-  color: #f5fbff !important;
-  font-weight: 700 !important;
-  box-shadow: 0 2px 10px rgba(12, 111, 158, 0.35) !important;
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[kind="primary"] {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border: 1px solid transparent !important;
+  border-left: 3px solid var(--primary, #38bdf8) !important;
+  color: var(--text, #dde4ee) !important;
+  font-weight: 650 !important;
+  box-shadow: none !important;
 }
-[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] p,
-[data-testid="stSidebar"] button[kind="primary"] p {
-  font-weight: 700 !important;
-  color: #f5fbff !important;
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"]::before,
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[kind="primary"]::before {
+  color: var(--primary, #38bdf8) !important;
+  opacity: 1;
+  font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
 }
-[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"]:hover,
-[data-testid="stSidebar"] button[kind="primary"]:hover {
-  background: #0d7fb3 !important;
-  border-color: #38bdf8 !important;
-  border-radius: 12px !important;
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"] p,
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[kind="primary"] p {
+  font-weight: 650 !important;
+  color: var(--text, #dde4ee) !important;
+}
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"]:hover,
+[data-testid="stSidebar"] [class*="st-key-nav_"] button[kind="primary"]:hover {
+  background: rgba(56, 189, 248, 0.16) !important;
+  border-color: transparent !important;
+  border-left-color: var(--primary, #38bdf8) !important;
+  border-radius: 10px !important;
   color: #ffffff !important;
 }
 
-.stDownloadButton > button {
+.stDownloadButton button {
   background:var(--md-surface-container) !important; color:var(--text) !important;
   border:1px solid var(--outline-variant) !important; border-radius:var(--shape-lg) !important;
   font-size:13px !important; font-weight:500 !important; padding:8px 18px !important;
   transition:background var(--dur-quick) var(--ease-std), border-radius var(--dur-normal) var(--spring) !important;
 }
-.stDownloadButton > button:hover { background:var(--md-surface-container-high) !important; border-color:var(--secondary) !important; border-radius:var(--shape-xl) !important; box-shadow:0 0 0 2px rgba(74,222,128,0.15) !important; }
+.stDownloadButton button:hover { background:var(--md-surface-container-high) !important; border-color:var(--secondary) !important; border-radius:var(--shape-xl) !important; box-shadow:0 0 0 2px rgba(74,222,128,0.15) !important; }
 
 /* ==========================================================
    FORM ELEMENTS — M3 Outlined field
@@ -598,7 +837,7 @@ hr { border:none !important; border-top:1px solid var(--outline-variant) !import
   font-weight: 600 !important;
 }
 
-.stSpinner > div {
+.stSpinner > div:first-child {
   width: 1.35rem !important;
   height: 1.35rem !important;
   border: 3px solid rgba(168, 200, 255, 0.2) !important;
@@ -720,55 +959,72 @@ div[class*="st-key-remove_ado_story"] button:hover {
 }
 
 /* ==========================================================
-   PAGE LOADER — shown during initial app startup
+   PAGE LOADER — frosted overlay on startup + page changes
    ========================================================== */
 .qa-page-loader {
   position: fixed;
   inset: 0;
   z-index: 99990;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 12, 18, 0.78);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
+  transition: opacity 180ms var(--ease-std, ease), visibility 180ms var(--ease-std, ease);
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(56, 189, 248, 0.10), transparent 62%),
+    radial-gradient(ellipse 50% 40% at 70% 70%, rgba(74, 222, 128, 0.06), transparent 55%),
+    rgba(13, 17, 23, 0.42);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
 }
+.qa-page-loader.is-on,
 body:has([data-testid="stApp"][data-test-script-state="initial"]) #qa-page-loader {
-  display: flex !important;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
-.qa-loader-card {
+.qa-loader-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 28px 36px;
-  border-radius: 20px;
-  background: rgba(26, 35, 48, 0.92);
-  border: 1px solid #3a4758;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(56, 189, 248, 0.12);
+  gap: 14px;
+  padding: 28px 32px 22px;
+  border-radius: 22px;
+  background: rgba(26, 35, 48, 0.48);
+  border: 1px solid rgba(94, 112, 135, 0.35);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
 }
-.qa-loader-ring {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 3px solid rgba(56, 189, 248, 0.18);
-  border-top-color: #38bdf8;
-  border-right-color: #4ade80;
-  animation: qa-spin 0.75s linear infinite;
+/* Host for assets/loading.lottie (dotLottie → Lottie JSON via apply_theme). */
+.qa-lottie-host {
+  width: 120px;
+  height: 120px;
+  margin: 2px 0;
+  overflow: hidden;
+}
+.qa-lottie-host svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 .qa-loader-text {
   font-family: var(--ui-font), "Segoe UI", sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #d0eeff;
+  color: var(--on-primary-container, #d0eeff);
+  opacity: 0.92;
 }
-@keyframes qa-spin {
-  to { transform: rotate(360deg); }
+@media (prefers-reduced-motion: reduce) {
+  .qa-page-loader { transition: none; }
 }
-header[data-testid="stHeader"] { z-index: 100000 !important; }
+header[data-testid="stHeader"] { z-index: 99990 !important; }
 
 /* ── Background Task Center (Material You dark) ── */
 .material-symbols-rounded {
@@ -850,6 +1106,52 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
   .st-key-bg-task-panel { animation: none !important; }
   .bg-task-progress-fill.shimmer::after { animation: none !important; }
 }
+/* Compact pill-shaped "Recheck" button (icon + label) next to the live connection status. */
+div[class*="_recheck_connections"] {
+  display: flex !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+}
+[data-testid="stHorizontalBlock"]:has(div[class*="_recheck_connections"]) [data-testid="stCaptionContainer"] {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+div[class*="_recheck_connections"] button {
+  width: auto !important;
+  min-width: 0 !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--outline-variant, #26333f) !important;
+  background: var(--md-surface-container-high, #222d3a) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+div[class*="_recheck_connections"] button:hover {
+  background: var(--primary-container, #1f3a5f) !important;
+  border-color: var(--primary, #60a5fa) !important;
+}
+div[class*="_recheck_connections"] button [data-testid="stMarkdownContainer"] {
+  display: flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+}
+div[class*="_recheck_connections"] button p {
+  display: block !important;
+  margin: 0 !important;
+  font-size: 0.85rem !important;
+  line-height: 1 !important;
+}
+div[class*="_recheck_connections"] button span {
+  line-height: 1 !important;
+}
 .st-key-bg_task_bell button {
   width: 48px !important;
   min-width: 48px !important;
@@ -884,6 +1186,8 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
 }
 .st-key-bg_task_bell button:hover {
   background: var(--md-surface-container-high) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 .st-key-bg_task_close_outside,
 .st-key-bg_task_close_outside button {
@@ -899,6 +1203,9 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
   position: fixed !important;
   top: 68px;
   right: 16px;
+  /* Match the app density. This panel is position:fixed so it does not
+     inherit the main-content zoom and must be scaled on its own. */
+  zoom: var(--app-zoom, 0.8);
   width: min(400px, calc(100vw - 24px));
   max-height: none;
   z-index: 1000004;
@@ -916,6 +1223,41 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
 }
 .st-key-bg-task-panel > div {
   background: transparent !important;
+}
+.st-key-bg_task_close_visible {
+  position: absolute !important;
+  top: 14px;
+  right: 14px;
+  width: 36px !important;
+  height: 36px !important;
+  margin: 0 !important;
+  z-index: 4 !important;
+}
+.st-key-bg_task_close_visible button {
+  width: 36px;
+  height: 36px;
+  min-height: 36px !important;
+  padding: 0 !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--bg-on-variant) !important;
+  font-size: 34px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+}
+.st-key-bg_task_close_visible button [data-testid="stMarkdownContainer"] p {
+  margin: 0 !important;
+  font-size: 34px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+}
+.st-key-bg_task_close_visible button:hover {
+  background: var(--bg-surface-high) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--bg-on-surface) !important;
 }
 .st-key-bg-task-panel .bg-task-panel {
   position: relative;
@@ -985,41 +1327,6 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
   font-weight: 600;
   color: var(--bg-on-surface);
   line-height: 1.3;
-}
-.st-key-bg-task-panel .bg-task-html-close {
-  position: absolute;
-  top: 14px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--bg-on-variant);
-  cursor: pointer;
-  z-index: 4;
-}
-.st-key-bg-task-panel .bg-task-html-close .material-symbols-rounded {
-  display: none;
-}
-.st-key-bg-task-panel .bg-task-html-close::before {
-  content: "×";
-  color: var(--bg-on-variant);
-  font-family: Arial, sans-serif;
-  font-size: 26px;
-  font-weight: 400;
-  line-height: 1;
-}
-.st-key-bg-task-panel .bg-task-html-close:hover {
-  background: var(--bg-surface-high);
-  color: var(--bg-on-surface);
-}
-.st-key-bg-task-panel .bg-task-html-close:hover::before {
-  color: var(--bg-on-surface);
 }
 .st-key-bg-task-panel .bg-task-header p {
   margin: 4px 0 0;
@@ -1324,8 +1631,8 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
   width: 100% !important;
   min-width: 0 !important;
 }
-.st-key-bg-task-panel [class*="st-key-bg-task-card-"] .stButton > button,
-.st-key-bg-task-panel .st-key-bg-task-footer .stButton > button {
+.st-key-bg-task-panel [class*="st-key-bg-task-card-"] .stButton button,
+.st-key-bg-task-panel .st-key-bg-task-footer .stButton button {
   width: 100% !important;
   max-width: 100% !important;
   overflow: hidden;
@@ -1436,48 +1743,35 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
 .st-key-background-tasks-page [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"]:last-of-type {
   margin-top: 4px;
 }
-.st-key-background-tasks-page .stButton > button {
+.st-key-background-tasks-page .stButton button {
   min-height: 36px !important;
   border-radius: 999px !important;
 }
-.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:first-child .stButton > button {
+.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:first-child .stButton button {
   min-width: 110px !important;
 }
-.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:not(:first-child) .stButton > button {
+.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:not(:first-child) .stButton button {
   min-width: 76px !important;
 }
-.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:first-child .stButton > button:hover {
+.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:first-child .stButton button:hover {
   background: var(--primary-container) !important;
   border-color: var(--primary) !important;
   color: var(--on-primary-container) !important;
 }
-.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:not(:first-child) .stButton > button:hover {
+.st-key-bg-task-panel [class*="st-key-bg-task-card-"] [data-testid="stColumn"]:not(:first-child) .stButton button:hover {
   background: var(--md-surface-container-highest) !important;
   border-color: var(--outline) !important;
 }
 .st-key-bg_task_close_header {
-  position: absolute !important;
-  top: 14px;
-  right: 12px;
-  width: 36px !important;
-  height: 36px !important;
-  z-index: 20;
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 .st-key-bg_task_close_header button {
-  width: 36px !important;
-  min-width: 36px !important;
-  height: 36px !important;
-  padding: 0 !important;
-  font-size: 0 !important;
-  border-radius: 999px !important;
-  background: transparent !important;
-  border: none !important;
-}
-.st-key-bg_task_close_header button::before {
-  content: "close";
-  font-family: "Material Symbols Rounded", sans-serif;
-  font-size: 20px;
-  color: var(--muted);
+  display: none !important;
 }
 @media (max-width: 768px) {
   .st-key-bg-task-panel {
@@ -1496,6 +1790,102 @@ header[data-testid="stHeader"] { z-index: 100000 !important; }
     to { opacity: 1; }
   }
 }
+
+/* ==========================================================
+   TOASTS - slide in from the right, slide out to the right.
+   Stacking (existing toasts gliding up/down) and the exit ghost
+   are driven by the script in apply_theme().
+   ========================================================== */
+@keyframes qa-toast-in {
+  from { opacity: 0; transform: translateX(calc(100% + 32px)); }
+  60%  { opacity: 1; }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes qa-toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(calc(100% + 32px)); }
+}
+[data-testid="stToastContainer"] {
+  background: transparent !important;
+}
+[data-testid="stToast"],
+.qa-toast-ghost[data-qa-ghost] {
+  background: rgba(26, 35, 48, 0.52) !important;
+  border: 1px solid rgba(94, 112, 135, 0.35) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+  color: var(--text, #dde4ee) !important;
+}
+[data-testid="stToast"] > div,
+[data-testid="stToast"] [data-testid="stMarkdownContainer"],
+[data-testid="stToast"] [class*="stAlert"],
+.qa-toast-ghost[data-qa-ghost] > div {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+[data-testid="stToast"] {
+  /* backwards only: keeping transform after the slide would flatten
+     backdrop-filter and kill the frosted glass. */
+  animation: qa-toast-in 0.46s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  will-change: transform, opacity;
+}
+.qa-toast-ghost[data-qa-ghost] {
+  position: fixed !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  pointer-events: none !important;
+  z-index: 1000063 !important;
+  animation: qa-toast-out 0.34s cubic-bezier(0.55, 0, 0.9, 0.4) forwards !important;
+}
+@keyframes qa-toast-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes qa-toast-fade-out { from { opacity: 1; } to { opacity: 0; } }
+/* Reduced-motion preference: no sliding or gliding, just a quick fade. */
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="stToast"] { animation: qa-toast-fade-in 0.2s ease-out both; }
+  .qa-toast-ghost[data-qa-ghost] { animation: qa-toast-fade-out 0.2s ease-in forwards !important; }
+}
+
+/* Cursor-following tooltip for any element with data-qa-tip (script in apply_theme) */
+#qa-tip {
+  position: fixed; top: 0; left: 0; z-index: 1000100; pointer-events: none;
+  max-width: 340px; padding: 10px 14px;
+  background: rgba(40,52,70,0.5);
+  color: var(--text,#dde4ee);
+  border: 1px solid rgba(94,112,135,0.55);
+  border-radius: var(--shape-md,16px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  font-size: 12px; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere;
+  opacity: 0; transition: opacity 0.14s var(--ease-std, ease);
+  will-change: transform;
+}
+#qa-tip.qa-tip-on { opacity: 1; }
+/* Streamlit's own help= tooltips are replaced by #qa-tip (text is read from them) */
+[data-testid="stTooltipContent"],
+[data-baseweb="popover"]:has([data-testid="stTooltipContent"]),
+[data-baseweb="tooltip"]:has([data-testid="stTooltipContent"]),
+div:has(> [data-testid="stTooltipContent"]),
+body > div:has([data-testid="stTooltipContent"]),
+[role="tooltip"]:not(#qa-tip) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: scale(0) !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+}
+.stElementContainer:has(.qa-tip-registry) { display: none !important; }
+#qa-tip .qa-tip-line { display: block; }
+#qa-tip .qa-tip-key { color: var(--muted,#92a1b5); }
+#qa-tip .qa-tip-val { color: var(--primary,#38bdf8); font-family: monospace; }
 
 /* Hide Streamlit chrome */
 #MainMenu { visibility:hidden; }
@@ -1517,35 +1907,414 @@ def apply_theme() -> None:
     import streamlit.components.v1 as components
 
     st.markdown(THEME_CSS, unsafe_allow_html=True)
-    components.html(
-        """
+    logo_css = _brand_logo_style()
+    if logo_css:
+        st.markdown(logo_css, unsafe_allow_html=True)
+    lottie_path = _loading_lottie_path()
+    lottie_data = (
+        _loading_lottie_animation(str(lottie_path), lottie_path.stat().st_mtime_ns)
+        if lottie_path is not None
+        else None
+    )
+    lottie_json = json.dumps(lottie_data) if lottie_data is not None else "null"
+    lottie_sig = (lottie_data or {}).get("nm") or "lottie"
+    favicon = _favicon_path()
+    logo_uri = (
+        _favicon_data_uri(favicon.stat().st_mtime_ns) if favicon.is_file() else ""
+    )
+    bootstrap_js = """
 <script>
 (function () {
   const doc = window.parent.document;
-  if (!doc.getElementById("qa-page-loader")) {
-    const el = doc.createElement("div");
-    el.id = "qa-page-loader";
-    el.className = "qa-page-loader";
-    el.setAttribute("role", "status");
-    el.setAttribute("aria-live", "polite");
-    el.setAttribute("aria-label", "Loading");
-    el.innerHTML = '<div class="qa-loader-card"><div class="qa-loader-ring"></div><div class="qa-loader-text">Loading</div></div>';
-    doc.body.appendChild(el);
+  const win = window.parent;
+  const QA_LOTTIE_DATA = __QA_LOTTIE_DATA__;
+  const QA_LOTTIE_SIG = "__QA_LOTTIE_SIG__";
+  const QA_LOGO_URI = __QA_LOGO_URI__;
+  const applyBrandLogo = () => {
+    if (!QA_LOGO_URI) return;
+    doc.querySelectorAll(".sidebar-brand-icon").forEach((el) => {
+      el.style.backgroundImage = 'url("' + QA_LOGO_URI + '")';
+      el.style.backgroundSize = "cover";
+      el.style.backgroundPosition = "center";
+    });
+  };
+  applyBrandLogo();
+  const pageLoaderMarkup = () => (
+    '<div class="qa-loader-panel">' +
+      '<div class="qa-lottie-host" aria-hidden="true"></div>' +
+      '<div class="qa-loader-text">Loading</div>' +
+    "</div>"
+  );
+
+  const mountLottie = (host) => {
+    if (!host || !QA_LOTTIE_DATA) return;
+    if (host.dataset.qaLottieSig === QA_LOTTIE_SIG && host.dataset.qaLottieMounted === "1") return;
+    const start = () => {
+      if (!win.lottie) return;
+      if (host._qaLottie && host._qaLottie.destroy) host._qaLottie.destroy();
+      host.innerHTML = "";
+      host._qaLottie = win.lottie.loadAnimation({
+        container: host,
+        renderer: "svg",
+        loop: true,
+        autoplay: true,
+        animationData: QA_LOTTIE_DATA,
+      });
+      host.dataset.qaLottieMounted = "1";
+      host.dataset.qaLottieSig = QA_LOTTIE_SIG;
+    };
+    if (win.lottie) {
+      start();
+      return;
+    }
+    if (!doc.getElementById("qa-lottie-web")) {
+      const script = doc.createElement("script");
+      script.id = "qa-lottie-web";
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js";
+      script.onload = start;
+      doc.head.appendChild(script);
+    } else {
+      doc.getElementById("qa-lottie-web").addEventListener("load", start, { once: true });
+    }
+  };
+
+  const ensurePageLoader = () => {
+    let el = doc.getElementById("qa-page-loader");
+    if (!el) {
+      el = doc.createElement("div");
+      el.id = "qa-page-loader";
+      el.className = "qa-page-loader";
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
+      el.setAttribute("aria-label", "Loading");
+      el.innerHTML = pageLoaderMarkup();
+      doc.body.appendChild(el);
+    } else if (!el.querySelector(".qa-lottie-host")) {
+      el.innerHTML = pageLoaderMarkup();
+    }
+    const host = el.querySelector(".qa-lottie-host");
+    mountLottie(host);
+    return el;
+  };
+  ensurePageLoader();
+
+  if (!doc.__qaPageLoaderV4) {
+    doc.__qaPageLoaderV4 = true;
+    let navPending = false;
+    let hideTimer = null;
+
+    const setLoading = (on) => {
+      const el = ensurePageLoader();
+      el.classList.toggle("is-on", !!on);
+    };
+
+    const scriptState = () => {
+      const app = doc.querySelector('[data-testid="stApp"]');
+      return (app && app.getAttribute("data-test-script-state")) || "";
+    };
+
+    const syncFromScript = () => {
+      const state = scriptState();
+      if (state === "initial") {
+        setLoading(true);
+        return;
+      }
+      if (navPending) {
+        if (state === "running") return;
+        navPending = false;
+        if (hideTimer) win.clearTimeout(hideTimer);
+        hideTimer = win.setTimeout(() => setLoading(false), 120);
+        return;
+      }
+      setLoading(false);
+    };
+
+    doc.addEventListener(
+      "click",
+      (event) => {
+        const nav = event.target && event.target.closest
+          ? event.target.closest('[data-testid="stSidebar"] [class*="st-key-nav_"] button')
+          : null;
+        if (!nav) return;
+        navPending = true;
+        if (hideTimer) win.clearTimeout(hideTimer);
+        setLoading(true);
+      },
+      true
+    );
+
+    const app = doc.querySelector('[data-testid="stApp"]');
+    if (app && win.MutationObserver) {
+      new win.MutationObserver(syncFromScript).observe(app, {
+        attributes: true,
+        attributeFilter: ["data-test-script-state"],
+      });
+    }
+    syncFromScript();
   }
-  if (doc.__qaCollapseBound) return;
-  doc.__qaCollapseBound = true;
-  doc.addEventListener("click", (event) => {
-    const slot = event.target && event.target.closest
-      ? event.target.closest(".sidebar-collapse-slot")
-      : null;
-    if (!slot) return;
-    const native = doc.querySelector("[data-testid='stSidebarCollapseButton'] button")
-      || doc.querySelector("[data-testid='stSidebarCollapseButton']");
-    if (native) native.click();
-  });
+
+  // Toast motion: existing toasts glide when the stack changes, and a removed toast
+  // leaves a "ghost" copy that slides out to the right (React removes it instantly).
+  if (!doc.__qaToastFxV1) {
+    doc.__qaToastFxV1 = true;
+    const win = window.parent;
+    const SELECTOR = '[data-testid="stToast"]';
+    const known = new Map();
+    const reduceMotion = () => win.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const currentShift = (el) => {
+      const value = win.getComputedStyle(el).translate;
+      if (!value || value === "none") return 0;
+      const parts = value.split(" ");
+      return parseFloat(parts[1] || "0") || 0;
+    };
+
+    const measure = (el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        top: el.offsetTop,
+        shift: currentShift(el),
+        viewportTop: box.top,
+        viewportLeft: box.left,
+        width: box.width,
+        height: box.height,
+      };
+    };
+
+    const spawnGhost = (el, info) => {
+      const ghost = el.cloneNode(true);
+      ghost.removeAttribute("data-testid");
+      ghost.removeAttribute("id");
+      ghost.setAttribute("data-qa-ghost", "true");
+      ghost.classList.add("qa-toast-ghost");
+      ghost.style.top = info.viewportTop + "px";
+      ghost.style.left = info.viewportLeft + "px";
+      ghost.style.width = info.width + "px";
+      ghost.style.height = info.height + "px";
+      ghost.style.translate = "none";
+      doc.body.appendChild(ghost);
+      const cleanup = () => ghost.remove();
+      ghost.addEventListener("animationend", cleanup, { once: true });
+      win.setTimeout(cleanup, 900);
+    };
+
+    const sync = () => {
+      const current = Array.from(doc.querySelectorAll(SELECTOR));
+      if (current.length === 0 && known.size === 0) return;
+      const alive = new Set(current);
+
+      known.forEach((info, el) => {
+        if (alive.has(el)) return;
+        known.delete(el);
+        spawnGhost(el, info);
+      });
+
+      current.forEach((el) => {
+        const prev = known.get(el);
+        const now = measure(el);
+        if (prev && !reduceMotion()) {
+          const delta = prev.top - now.top;
+          if (Math.abs(delta) > 1) {
+            const from = delta + prev.shift;
+            el.animate(
+              [{ translate: "0 " + from + "px" }, { translate: "0 0" }],
+              { duration: 420, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+            );
+          }
+        }
+        known.set(el, now);
+      });
+    };
+
+    new MutationObserver(sync).observe(doc.body, { childList: true, subtree: true });
+    win.addEventListener("resize", sync);
+  }
+
+  // Themed tooltip that follows the cursor while it stays inside the hovered target.
+  // Text comes from, in order:
+  //   1. a data-qa-tip attribute on the element or an ancestor,
+  //   2. the tip registry (hidden .qa-tip-registry elements keyed by Streamlit widget key),
+  //   3. Streamlit's own help= tooltips (their text is read and shown here instead),
+  //   4. the full text of anything truncated with an ellipsis or line clamp.
+  // Lines like "Key: value" render with a dimmed key and a highlighted value.
+  if (!doc.__qaTipV3) {
+    doc.__qaTipV3 = true;
+    const win = window.parent;
+    const nativeTips = new WeakMap();
+    let tip = null;
+    let current = null;
+    let lastTarget = null;
+    let lastResult = null;
+    let pendingNative = null;
+    let lastX = 0;
+    let lastY = 0;
+
+    const ensureTip = () => {
+      if (tip && doc.body.contains(tip)) return tip;
+      tip = doc.createElement("div");
+      tip.id = "qa-tip";
+      tip.setAttribute("role", "tooltip");
+      doc.body.appendChild(tip);
+      return tip;
+    };
+
+    const fill = (text) => {
+      const box = ensureTip();
+      box.textContent = "";
+      text.split("\\n").forEach((line) => {
+        const row = doc.createElement("span");
+        row.className = "qa-tip-line";
+        const at = line.indexOf(": ");
+        if (at > 0 && at < 40) {
+          const key = doc.createElement("span");
+          key.className = "qa-tip-key";
+          key.textContent = line.slice(0, at + 2);
+          const val = doc.createElement("span");
+          val.className = "qa-tip-val";
+          val.textContent = line.slice(at + 2);
+          row.appendChild(key);
+          row.appendChild(val);
+        } else {
+          row.textContent = line;
+        }
+        box.appendChild(row);
+      });
+    };
+
+    const hide = () => {
+      current = null;
+      if (tip) tip.classList.remove("qa-tip-on");
+    };
+
+    const readRegistry = () => {
+      const map = {};
+      doc.querySelectorAll(".qa-tip-registry").forEach((node) => {
+        try { Object.assign(map, JSON.parse(node.getAttribute("data-tips") || "{}")); } catch (e) { /* ignore */ }
+      });
+      return map;
+    };
+
+    const resolve = (target) => {
+      const explicit = target.closest("[data-qa-tip]");
+      if (explicit) return { host: explicit, text: explicit.getAttribute("data-qa-tip") || "" };
+
+      let registry = null;
+      for (let node = target, depth = 0; node && node !== doc.body && depth < 10; node = node.parentElement, depth++) {
+        for (const cls of node.classList) {
+          if (!cls.startsWith("st-key-")) continue;
+          registry = registry || readRegistry();
+          const text = registry[cls.slice(7)];
+          if (text) return { host: node, text };
+        }
+      }
+
+      const nativeHost = target.closest('[data-testid="stTooltipHoverTarget"]');
+      if (nativeHost) return { host: nativeHost, text: nativeTips.get(nativeHost) || "", native: true };
+
+      for (let node = target, depth = 0; node && node !== doc.body && depth < 4; node = node.parentElement, depth++) {
+        const style = win.getComputedStyle(node);
+        const clamp = style.webkitLineClamp;
+        const wide = style.textOverflow === "ellipsis" && node.scrollWidth > node.clientWidth + 1;
+        const tall = clamp && clamp !== "none" && node.scrollHeight > node.clientHeight + 1;
+        if (wide || tall) {
+          const text = (node.innerText || node.textContent || "").trim();
+          if (text) return { host: node, text };
+        }
+      }
+      return null;
+    };
+
+    const place = () => {
+      const box = ensureTip();
+      const gap = 16;
+      const w = box.offsetWidth;
+      const h = box.offsetHeight;
+      let x = lastX + gap;
+      let y = lastY + gap;
+      if (x + w > win.innerWidth - 8) x = lastX - w - gap;
+      if (y + h > win.innerHeight - 8) y = lastY - h - gap;
+      box.style.transform = "translate(" + Math.max(8, x) + "px," + Math.max(8, y) + "px)";
+    };
+
+    const display = (result) => {
+      const box = ensureTip();
+      if (result.host !== current || box.dataset.text !== result.text) {
+        current = result.host;
+        fill(result.text);
+        box.dataset.text = result.text;
+      }
+      place();
+      box.classList.add("qa-tip-on");
+    };
+
+    doc.addEventListener("mousemove", (event) => {
+      lastX = event.clientX;
+      lastY = event.clientY;
+      const target = event.target;
+      if (!target || !target.closest) { hide(); return; }
+      if (target !== lastTarget) {
+        lastTarget = target;
+        lastResult = resolve(target);
+      }
+      const result = lastResult;
+      if (!result) { pendingNative = null; if (current) hide(); return; }
+      if (!result.text) {
+        // Streamlit help= tooltip that has not opened yet; show ours once it does.
+        pendingNative = result.native ? result.host : null;
+        if (current) hide();
+        return;
+      }
+      display(result);
+    }, true);
+
+    const hideNative = (content) => {
+      let node = content;
+      for (let depth = 0; depth < 6 && node && node !== doc.body; depth++) {
+        node.style.setProperty("display", "none", "important");
+        node.style.setProperty("visibility", "hidden", "important");
+        node.style.setProperty("opacity", "0", "important");
+        node.style.setProperty("pointer-events", "none", "important");
+        if (node.getAttribute("data-baseweb") === "popover" || node.getAttribute("data-baseweb") === "tooltip") {
+          break;
+        }
+        node = node.parentElement;
+      }
+    };
+
+    new MutationObserver(() => {
+      const contents = doc.querySelectorAll('[data-testid="stTooltipContent"]');
+      if (!contents.length) return;
+      contents.forEach((content) => {
+        const text = (content.innerText || content.textContent || "").trim();
+        hideNative(content);
+        if (!text) return;
+        if (pendingNative) {
+          const host = pendingNative;
+          pendingNative = null;
+          nativeTips.set(host, text);
+          if (lastResult && lastResult.host === host) {
+            lastResult = { host, text, native: true };
+            display(lastResult);
+          }
+        } else if (current && lastResult && lastResult.native) {
+          nativeTips.set(lastResult.host, text);
+        }
+      });
+    }).observe(doc.body, { childList: true, subtree: true, characterData: true });
+
+    doc.addEventListener("mousedown", hide, true);
+    doc.addEventListener("mouseleave", hide);
+    win.addEventListener("blur", hide);
+    win.addEventListener("scroll", hide, true);
+  }
+
 })();
 </script>
-""",
+"""
+    components.html(
+        bootstrap_js.replace("__QA_LOTTIE_DATA__", lottie_json)
+        .replace("__QA_LOTTIE_SIG__", str(lottie_sig).replace('"', ""))
+        .replace("__QA_LOGO_URI__", json.dumps(logo_uri)),
         height=0,
         width=0,
     )

@@ -172,6 +172,11 @@ def enrich_mapping_output_with_llm(mapping_payload: dict) -> dict:
 def apply_canonical_spec(payload: dict, mapping_payload: dict, canonical_mappings: list[dict]) -> dict:
     llm_output = mapping_payload.get("llm_mapping_output") or {}
     entities = llm_output.get("entities") or []
+    primary_key = payload.get("primary_key")
+    if isinstance(primary_key, (list, tuple)):
+        payload["primary_key"] = ", ".join(
+            str(item).strip() for item in primary_key if str(item).strip()
+        )
     if mapping_payload.get("source_table") and not str(payload.get("source_table") or "").strip():
         payload["source_table"] = mapping_payload["source_table"]
     if mapping_payload.get("target_table") and not str(payload.get("target_table") or "").strip():

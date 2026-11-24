@@ -1,4 +1,5 @@
 from src.agents.etl_agent import build_etl_test_plan
+from src.models.etl_spec import ETLSpecModel
 
 
 def test_etl_agent_reports_manager_categories_and_coverage():
@@ -35,3 +36,17 @@ def test_etl_agent_exposes_gaps_without_inventing_support():
     assert by_category["Incremental-load testing"]["status"] == "gap"
     assert by_category["Regression testing"]["status"] == "gap"
     assert by_category["Regression testing"]["gap"]
+
+
+def test_etl_spec_accepts_composite_key_normalized_as_string():
+    spec = ETLSpecModel.model_validate(
+        {
+            "source_table": "raw.customer",
+            "target_table": "curated.customer",
+            "primary_key": "customer_id, tenant_id",
+            "load_type": "incremental",
+            "incremental_column": "updated_at",
+        }
+    )
+
+    assert spec.primary_key == "customer_id, tenant_id"

@@ -1,0 +1,54 @@
+{
+  "database_dialect": "Databricks SQL",
+  "catalog": "main",
+  "source_table": "raw.customer",
+  "target_table": "curated.customer",
+  "primary_key": "customer_id",
+  "load_type": "incremental",
+  "incremental_column": "updated_at",
+  "watermark_column": "updated_at",
+  "source_to_target_mapping": [
+    {
+      "source_column": "customer_id",
+      "target_column": "customer_id",
+      "transformation": "DIRECT"
+    },
+    {
+      "source_column": "customer_name",
+      "target_column": "customer_name",
+      "transformation": "TRIM(customer_name)"
+    },
+    {
+      "source_column": "email",
+      "target_column": "email",
+      "transformation": "LOWER(email)"
+    },
+    {
+      "source_column": "country_code",
+      "target_column": "country_code",
+      "transformation": "UPPER(country_code)"
+    },
+    {
+      "source_column": "updated_at",
+      "target_column": "updated_at",
+      "transformation": "DIRECT"
+    }
+  ],
+  "transformation_rules": [
+    "Trim customer_name",
+    "Uppercase country_code",
+    "Lowercase email",
+    "Derive customer_segment from annual_revenue"
+  ],
+  "business_rules": [
+    "customer_id must not be null or duplicated",
+    "annual_revenue must be greater than or equal to zero",
+    "Only active customers are loaded"
+  ],
+  "not_null_columns": [
+    "customer_id",
+    "customer_name",
+    "updated_at"
+  ],
+  "additional_notes": "SCD Type 2 applies to customer_segment with effective_start_date, effective_end_date, and is_current."
+}

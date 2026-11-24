@@ -10,7 +10,7 @@ if (-not (Test-Path ".venv")) {
 
 Write-Host "Installing dependencies..."
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\pip.exe install -r requirements.txt
+.\.venv\Scripts\pip.exe install -r requirements-dev.txt
 
 Write-Host "Creating sample files and folders..."
 .\.venv\Scripts\python.exe scripts\create_samples.py

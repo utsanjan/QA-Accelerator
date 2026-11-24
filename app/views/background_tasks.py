@@ -25,10 +25,10 @@ def render() -> None:
         summary = task_summary(tasks)
 
         cols = st.columns(4)
-        cols[0].metric("Running", summary["running"])
-        cols[1].metric("Queued", summary["queued"])
-        cols[2].metric("Completed", summary["completed"])
-        cols[3].metric("Failed", summary["failed"])
+        cols[0].metric("Running", summary["running"], help="Tasks working right now.")
+        cols[1].metric("Queued", summary["queued"], help="Tasks waiting for their turn to start.")
+        cols[2].metric("Completed", summary["completed"], help="Tasks that finished successfully.")
+        cols[3].metric("Failed", summary["failed"], help="Tasks that ended with an error. Use Retry or open Details.")
 
         if summary["completed"]:
             if st.button("Clear completed", type="secondary"):

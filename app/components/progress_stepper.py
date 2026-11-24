@@ -1,5 +1,7 @@
 import streamlit as st
 
+from app.components.tooltips import tip
+
 WORKFLOW_STEPS = ["Import", "Build", "Review", "Generate", "Export"]
 
 _STEP_LABELS = {
@@ -9,6 +11,16 @@ _STEP_LABELS = {
     "Generate": "Generate",
     "Export":   "Export",
 }
+
+_STEP_HINTS = {
+    "Import": "Bring in Azure DevOps stories, mapping files or a manual story.",
+    "Build": "Pick the input source and build a draft with the Requirement and Mapping Analysis agents.",
+    "Review": "Check and edit what the agents produced before approving.",
+    "Generate": "Approve the draft and generate SQL tests and test cases.",
+    "Export": "Preview the QA report and download the outputs.",
+}
+
+_STATE_TEXT = {"done": "Done", "active": "You are here", "pending": "Upcoming"}
 
 _CHECK_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
@@ -95,7 +107,7 @@ def render_stepper(current_step: str) -> None:
         sep = '<span class="m3-step-connector"></span>' if idx < len(WORKFLOW_STEPS) - 1 else ""
         items_html += (
             f'<div class="m3-step-item">'
-            f'<div class="m3-step-node {state}">'
+            f'<div class="m3-step-node {state}"{tip(_STATE_TEXT[state] + ": " + _STEP_HINTS.get(step, ""))}>'
             f'<span class="m3-step-dot {state}">{dot_content}</span>'
             f'<span class="m3-step-label {state}">{label}</span>'
             f"</div>{sep}</div>"

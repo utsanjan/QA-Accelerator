@@ -22,6 +22,7 @@ def render_export_center(result: dict, *, prefix: str = "export") -> None:
         if report_path and report_path.exists():
             st.download_button(
                 "QA Report (.md)",
+                help="Markdown report written by the Reporting Agent.",
                 data=report_path.read_text(encoding="utf-8"),
                 file_name=report_path.name,
                 mime="text/markdown",
@@ -33,6 +34,7 @@ def render_export_center(result: dict, *, prefix: str = "export") -> None:
         if test_cases_path and test_cases_path.exists():
             st.download_button(
                 "Test Cases (.xlsx)",
+                help="Excel workbook with every test case, ready to share with testers.",
                 data=test_cases_path.read_bytes(),
                 file_name=test_cases_path.name,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -44,6 +46,7 @@ def render_export_center(result: dict, *, prefix: str = "export") -> None:
         zip_bytes = service.build_qa_pack_zip(result)
         st.download_button(
             "Full QA Pack (.zip)",
+            help="Report, test cases, SQL tests and artifacts in one download.",
             data=zip_bytes,
             file_name=f"qa_pack_{result.get('run_id', 'run')[:8]}.zip",
             mime="application/zip",
@@ -55,6 +58,7 @@ def render_export_center(result: dict, *, prefix: str = "export") -> None:
     if artifacts:
         st.download_button(
             "RTM & Artifacts (.json)",
+            help="Requirement traceability matrix and scenario summaries as JSON.",
             data=json.dumps(artifacts, indent=2),
             file_name=f"test_case_artifacts_{result.get('run_id', 'run')[:8]}.json",
             mime="application/json",
@@ -64,6 +68,7 @@ def render_export_center(result: dict, *, prefix: str = "export") -> None:
     if result.get("tests"):
         st.download_button(
             "SQL Tests (.json)",
+            help="SELECT-only validation queries written by the SQL Agent.",
             data=json.dumps(result["tests"], indent=2),
             file_name=f"sql_tests_{result.get('run_id', 'run')[:8]}.json",
             mime="application/json",

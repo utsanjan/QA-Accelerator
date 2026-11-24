@@ -5,7 +5,9 @@ from pathlib import Path
 import streamlit as st
 
 from app.components.file_upload import save_upload
+from app.state.kpi_job import get_kpi_job, kpi_job_running, start_kpi_normalization
 from app.state.session import UPLOADS, get_service
+from src.exporters.kpi_exporter import kpi_normalization_excel_bytes
 
 
 def _requirement_context() -> str:
@@ -41,28 +43,12 @@ def render_kpi_logic_section(*, draft_id: str | None = None, key_prefix: str = "
         key=f"{key_prefix}_file",
     )
 
-    if st.button("Process & Normalize SQL for Databricks", type="primary", key=f"{key_prefix}_process"):
-        if kpi_upload is None:
-            st.error("Upload a KPI logic document first.")
-            return
-        try:
-            saved_path = save_upload(kpi_upload, UPLOADS / "kpi_logic")
-            with st.spinner("Parsing and normalizing KPI SQL — this may take a minute..."):
-                normalized = service.process_kpi_logic_document(
-                    saved_path,
-                    requirement_context=_requirement_context(),
-                )
-            st.session_state["kpi_logic_normalized"] = normalized
-
-            if draft_id:
-                service.attach_kpi_logic_to_draft(draft_id, normalized)
-
-            st.success(
-                f"Normalized {normalized.get('runnable_count', 0)} of "
-                f"{normalized.get('total_count', 0)} KPI queries for Databricks."
-            )
-        except Exception as exc:
-            st.error(str(exc))
+    job = get_kpi_job()
+    running = kpi_job_running()
+    if running:
+        st.info("KPI SQL Agent is normalizing SQL in the background. Track progress from the Background Tasks bell.")
+    elif job and job.get("status") == "failed":
+        st.error(f"KPI SQL Agent failed: {job.get('error', 'Unknown error')}")
 
     normalized = st.session_state.get("kpi_logic_normalized")
     if not normalized and draft_id:
@@ -70,9 +56,76 @@ def render_kpi_logic_section(*, draft_id: str | None = None, key_prefix: str = "
         if draft:
             normalized = service._load_kpi_normalization(draft.get("source_files") or {})
 
+    with st.container(horizontal=True, gap="small", vertical_alignment="center"):
+        process_clicked = st.button(
+            "Process and Normalize SQL",
+            help="KPI SQL Agent rewrites the uploaded queries as Databricks SELECT-only SQL. Runs in the background.",
+            type="primary",
+            key=f"{key_prefix}_process",
+            disabled=running,
+            width="content",
+        )
+        if normalized:
+            export_name = Path(normalized.get("source_path") or "kpi_logic").stem
+            st.download_button(
+                "Export Excel",
+                data=kpi_normalization_excel_bytes(normalized),
+                file_name=f"{export_name}_normalized.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download the normalized KPI queries as an Excel workbook.",
+                key=f"{key_prefix}_export_excel",
+                width="content",
+            )
+
+    if process_clicked:
+        if kpi_upload is None:
+            st.error("Upload a KPI logic document first.")
+            return
+        try:
+            saved_path = save_upload(kpi_upload, UPLOADS / "kpi_logic")
+            start_kpi_normalization(
+                service,
+                saved_path,
+                requirement_context=_requirement_context(),
+                draft_id=draft_id,
+            )
+        except Exception as exc:
+            st.error(str(exc))
+        else:
+            st.toast("KPI SQL Agent started. Track it in Background Tasks.", icon="⏳")
+            st.rerun()
+
     if not normalized:
         return
 
+    _render_kpi_results(normalized)
+
+
+def render_kpi_summary(
+    normalized: dict | None,
+    *,
+    key_prefix: str = "kpi_summary",
+    source_path: str = "",
+) -> None:
+    """Read-only summary of a normalized KPI logic document (used on the Review page)."""
+    if not normalized:
+        return
+
+    st.subheader("KPI Logic Document")
+    name = Path(source_path or normalized.get("source_path") or "kpi_logic").name
+    st.caption(f"Attached on Build Spec: `{name}`")
+    st.download_button(
+        "Export Excel",
+        data=kpi_normalization_excel_bytes(normalized),
+        file_name=f"{Path(name).stem}_normalized.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Download the normalized KPI queries as an Excel workbook.",
+        key=f"{key_prefix}_export_excel",
+    )
+    _render_kpi_results(normalized)
+
+
+def _render_kpi_results(normalized: dict) -> None:
     runnable = normalized.get("runnable_count", 0)
     total = normalized.get("total_count", 0)
     rejected = normalized.get("rejected_queries") or []

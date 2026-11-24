@@ -19,7 +19,7 @@ Nothing in this repo will generate tests until Azure OpenAI is configured. Every
 | **Mapping Excel** | ETL / hybrid stories (source-to-target columns) | ADO attachment, Upload tab, or Build page |
 | **Requirement / BRD** (`.txt` / `.docx` / `.pdf`) | File-based ETL without ADO | Import → File Upload |
 | **UI screenshots** (optional) | Richer functional/UI test cases | Import / Build uploaders |
-| **KPI logic document** (optional) | Developer SQL for UI KPI checks | Import or Review → KPI Logic Document |
+| **KPI logic document** (optional) | Developer SQL for UI KPI checks | Build Spec → KPI Logic Document |
 | **Azure Databricks** host, warehouse path, token | Only if you tick **Execute SQL on Azure Databricks** | `.env` |
 
 Azure OpenAI is **required**. Databricks is **not** required to generate SQL; leave execution unchecked if tables are not available.
@@ -52,15 +52,16 @@ Use the left menu in this order for a full run:
 | Menu | What you do |
 |---|---|
 | **Home** | Connection cards, counts, quick actions, recent runs |
-| **Import** | Pull ADO stories, upload files, or enter a story manually. Optional KPI SQL upload |
+| **Import** | Pull ADO stories, upload files, or enter a story manually |
 | **Build Spec** | Create a draft from the latest ADO import, uploads, samples, or a JSON spec |
-| **Review** | Read gaps, mapping analysis (VR rules / risk), edit ETL JSON if present, attach KPI logic |
+| **Review** | Read gaps, mapping analysis (VR rules / risk), edit ETL JSON if present |
 | **Generate** | Approve and generate the QA pack (functional cases and/or SQL tests) |
 | **Exports** | Download `qa_validation_pack.md` and `qa_test_cases.xlsx` |
 | **Test Cases** | Browse generated cases |
 | **Spec Library** | Approved ETL specs |
 | **History** | Past runs |
 | **Settings** | Health checks and live connection tests |
+| **About** | How the app works, every agent and what it does (with a link to where it runs), and the agent workflow |
 
 ### Workflow modes
 
@@ -82,14 +83,14 @@ A functional draft stores an empty ETL spec on purpose. You can still generate a
 4. **Test Connection**, then **Import User Stories**.
 5. Download requirements/stories if needed, then **Build Draft from this Import** (or open **Build Spec**).
 6. On **Build Spec**, choose **Latest ADO import**, set workflow mode (`auto` is fine), generate the draft.
-7. **Review**: check gaps, Mapping Analysis (if ETL), KPI upload if needed.
+7. **Review**: check gaps and Mapping Analysis (if ETL). Any KPI logic attached on Build Spec is listed here.
 8. **Generate**: Approve & Generate QA Pack. Keep Databricks execution **off** unless target tables exist.
 9. **Exports**: download the report and Excel. Close `output/qa_test_cases.xlsx` in Excel before regenerating.
 
 ### Option B - Files only
 
 1. **Import** → **File Upload**: requirement document, mapping Excel (ETL), optional screenshots.
-2. **Save Uploads & Go to Build**, or open **Build Spec** → **Uploaded files**.
+2. **Save & continue to Build Spec** (or open **Build Spec** → **Uploaded files** and upload there). The draft is built on Build Spec, where you can also set the workflow mode and add a KPI logic document.
 3. Review → Generate → Exports (same as above).
 
 ### Option C - Manual story
@@ -108,7 +109,7 @@ Or **Build Spec** → **Sample files**. Uses `samples/requirements/sample_brd.tx
 
 ## KPI logic documents
 
-On **Import** or **Review**, upload developer SQL (`.sql`, `.xlsx`, `.txt`, `.docx`, `.pdf`, `.md`, `.json`).
+On **Build Spec**, upload developer SQL (`.sql`, `.xlsx`, `.txt`, `.docx`, `.pdf`, `.md`, `.json`) and click **Process and Normalize SQL**. The normalized result is attached to the draft when you click **Generate Draft**. Drafts created directly from the Import page do not include KPI logic; use Build Spec when you need it.
 
 The KPI agent rewrites each query to **SELECT-only Databricks SQL**. Use this for UI KPI validation when there is no warehouse mapping sheet. Attaching KPI logic to a functional draft makes the run **hybrid**.
 
@@ -359,7 +360,8 @@ samples/                  BRD, mapping, KPI, ETL spec, templates
 scripts/                  Sample-file generator
 tests/
 main.py                   CLI
+requirements.txt          Runtime dependencies (requirements-dev.txt adds pytest)
 setup.ps1 / run_ui.ps1
 ```
 
-Runtime folders created while you work (`imports/`, `output/`, `review/`, `runs/`, `uploads/`, `metadata/`) are gitignored.
+Runtime folders created while you work (`imports/`, `output/`, `review/`, `runs/`, `uploads/`) are gitignored. Under `metadata/`, the local SQLite database and connection-status file are gitignored too.

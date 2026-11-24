@@ -5,10 +5,10 @@ from pathlib import Path
 import streamlit as st
 
 from app.components.file_upload import save_upload, ui_context_from_uploads
-from app.components.kpi_logic_upload import render_kpi_logic_section
 from app.components.progress_stepper import render_stepper
 from app.components.story_card import render_story_card
 from app.components.theme import page_header
+from app.components.toast_loader import toast_loader
 from app.state.session import UPLOADS, get_service
 from src.integrations.ado_importer import AdoImporter
 
@@ -94,7 +94,11 @@ def render() -> None:
         st.caption("Optional. Skip this tab if you only have a mapping document. Empty Work Item IDs does not reuse a previous story.")
 
         btn1, btn2, btn3 = st.columns(3)
-        if btn1.button("Test Connection", use_container_width=True):
+        if btn1.button(
+            "Test Connection",
+            use_container_width=True,
+            help="Check the Azure DevOps credentials without importing anything.",
+        ):
             try:
                 from src.integrations.azure_devops_client import AzureDevOpsClient
                 from src.config import get_azure_devops_settings
@@ -110,13 +114,18 @@ def render() -> None:
             except Exception as err:
                 st.error(str(err))
 
-        if btn2.button("Import User Stories", type="primary", use_container_width=True):
+        if btn2.button(
+            "Import User Stories",
+            type="primary",
+            use_container_width=True,
+            help="Fetch the listed work items from Azure DevOps.",
+        ):
             parsed_ids = _parse_work_item_ids(work_item_ids)
             if not parsed_ids:
                 st.error("Enter one or more Work Item IDs. An empty field does not reuse a previous story.")
             else:
                 try:
-                    with st.spinner("Importing user stories..."):
+                    with toast_loader("Importing user stories...", done="User stories imported."):
                         metadata = service.import_from_azure_devops(
                             organization=org or None,
                             project=project or None,
@@ -127,7 +136,11 @@ def render() -> None:
                 except Exception as err:
                     st.error(str(err))
 
-        if btn3.button("Start new import", use_container_width=True):
+        if btn3.button(
+            "Start new import",
+            use_container_width=True,
+            help="Clear the current import and start over.",
+        ):
             st.session_state["reset_ado_import"] = True
             st.rerun()
 
@@ -191,7 +204,12 @@ def render() -> None:
                         use_container_width=True,
                     )
             with action_cols[2]:
-                if st.button("Build Draft from this Import", type="primary", use_container_width=True):
+                if st.button(
+                    "Build Draft from this Import",
+                    type="primary",
+                    use_container_width=True,
+                    help="Open Build Spec with this import selected as the input source.",
+                ):
                     st.session_state["build_input_source"] = "Latest ADO import"
                     st.session_state["current_page"] = "Build ETL Spec"
                     st.rerun()
@@ -200,8 +218,8 @@ def render() -> None:
         st.subheader("Upload mapping or requirement documents")
         st.caption(
             "Upload a mapping document to run the full ETL workflow. "
-            "Word STM tables are extracted, then Azure OpenAI writes the mapping output "
-            "(transformations, keys, and rules). Architecture tables are skipped. "
+            "The files are saved here and the draft is built on the Build Spec page, "
+            "where you can also set the workflow mode and add a KPI logic document. "
             "A requirement document and Azure DevOps import are optional."
         )
         requirement_upload = st.file_uploader("Requirement document (optional)", type=["txt", "docx", "pdf"])
@@ -216,64 +234,26 @@ def render() -> None:
         )
         uploaded_spec_name = st.text_input("Spec name", key="upload_spec_name")
 
-        if st.button("Build Draft from Uploads", type="primary"):
+        if st.button(
+            "Save & continue to Build Spec",
+            type="primary",
+            help="Save the files and open Build Spec. The draft is built there.",
+        ):
             req_path = save_upload(requirement_upload, UPLOADS)
             map_path = save_upload(mapping_upload, UPLOADS)
-            st.session_state["uploaded_requirement_path"] = str(req_path) if req_path else ""
-            st.session_state["uploaded_mapping_path"] = str(map_path) if map_path else ""
-            st.session_state["ui_context"] = ui_context_from_uploads(screenshot_uploads)
-            st.session_state["saved_upload_spec_name"] = uploaded_spec_name
-            st.session_state["build_input_source"] = "Uploaded files"
-
             if map_path is None and req_path is None:
                 st.error("Upload a mapping document to run the ETL workflow, or a requirement document for a functional story.")
-            elif map_path is not None:
-                try:
-                    spinner = (
-                        "Extracting STM tables and generating mapping output with Azure OpenAI..."
-                        if map_path.suffix.lower() == ".docx"
-                        else "Generating mapping output with Azure OpenAI..."
-                    )
-                    with st.spinner(spinner):
-                        draft = service.build_draft_from_files(
-                            mapping_path=map_path,
-                            requirement_path=req_path,
-                            spec_name=uploaded_spec_name or map_path.stem,
-                            ui_context=st.session_state.get("ui_context", ""),
-                        )
-                    draft_id = draft["draft_id"]
-                    kpi_normalized = st.session_state.get("kpi_logic_normalized")
-                    if kpi_normalized:
-                        draft = service.attach_kpi_logic_to_draft(draft_id, kpi_normalized)
-                    st.session_state["draft_id"] = draft_id
-                    st.session_state["draft_spec_json"] = service.pretty_json(draft.get("etl_spec_draft") or {})
-                    st.session_state["workflow_mode"] = draft.get("workflow_mode") or "etl"
-                    st.session_state["current_page"] = "Review Draft"
-                    st.rerun()
-                except Exception as err:
-                    st.error(str(err))
             else:
-                try:
-                    from src.parsers.document_parser import read_requirement_document
-
-                    req_text = read_requirement_document(req_path)
-                    with st.spinner("Analyzing requirement document..."):
-                        draft = service.build_functional_draft(
-                            requirement_text=req_text,
-                            spec_name=uploaded_spec_name or req_path.stem,
-                            ui_context=st.session_state.get("ui_context", ""),
-                        )
-                    draft_id = draft["draft_id"]
-                    kpi_normalized = st.session_state.get("kpi_logic_normalized")
-                    if kpi_normalized:
-                        draft = service.attach_kpi_logic_to_draft(draft_id, kpi_normalized)
-                    st.session_state["draft_id"] = draft_id
-                    st.session_state["draft_spec_json"] = service.pretty_json(draft.get("etl_spec_draft") or {})
-                    st.session_state["workflow_mode"] = draft.get("source_files", {}).get("workflow_mode", "functional")
-                    st.session_state["current_page"] = "Review Draft"
-                    st.rerun()
-                except Exception as err:
-                    st.error(str(err))
+                st.session_state["uploaded_requirement_path"] = str(req_path) if req_path else ""
+                st.session_state["uploaded_mapping_path"] = str(map_path) if map_path else ""
+                st.session_state["ui_context"] = ui_context_from_uploads(screenshot_uploads)
+                st.session_state["saved_upload_spec_name"] = uploaded_spec_name
+                st.session_state["build_input_source"] = "Uploaded files"
+                # Explicit choice: keep Build Spec from switching to an ADO import it hasn't seen yet.
+                loaded_import = st.session_state.get("latest_ado_import")
+                st.session_state["build_ado_seen_id"] = str(loaded_import["import_id"]) if loaded_import else ""
+                st.session_state["current_page"] = "Build ETL Spec"
+                st.rerun()
 
     with tab_manual:
         st.subheader("Enter user story manually")
@@ -289,11 +269,15 @@ def render() -> None:
         )
         manual_spec_name = st.text_input("Spec name", key="manual_spec_name")
 
-        if st.button("Create Functional Draft", type="primary"):
+        if st.button(
+            "Create Functional Draft",
+            type="primary",
+            help="The Requirement Analysis Agent turns this story into a functional draft for review.",
+        ):
             try:
                 rules = [line.strip() for line in business_rules.splitlines() if line.strip()]
                 ui_context = ui_context_from_uploads(manual_screenshots)
-                with st.spinner("Analyzing story and creating draft..."):
+                with toast_loader("Analyzing story and creating draft...", done="Draft created."):
                     draft = service.build_draft_from_manual_story(
                         title=title,
                         description=description,
@@ -303,9 +287,6 @@ def render() -> None:
                         ui_context=ui_context,
                     )
                 draft_id = draft["draft_id"]
-                kpi_normalized = st.session_state.get("kpi_logic_normalized")
-                if kpi_normalized:
-                    draft = service.attach_kpi_logic_to_draft(draft_id, kpi_normalized)
 
                 st.session_state["draft_id"] = draft_id
                 st.session_state["draft_spec_json"] = service.pretty_json(draft.get("etl_spec_draft") or {})
@@ -314,6 +295,3 @@ def render() -> None:
                 st.rerun()
             except Exception as err:
                 st.error(str(err))
-
-    st.divider()
-    render_kpi_logic_section(draft_id=st.session_state.get("draft_id") or None, key_prefix="import_kpi")

@@ -1,11 +1,14 @@
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from src.config import adb_runtime_context
 from src.prompts.kpi_logic_prompts import KPI_SQL_NORMALIZATION_PROMPT, KPI_SQL_NORMALIZER_SYSTEM_PROMPT
-from src.utils.llm_json import coerce_str_list, invoke_llm_json
-from src.utils.sql_safety import is_select_only, validate_sql_test
+from src.utils.llm_json import invoke_llm_json
+from src.utils.sql_safety import has_unresolved_placeholders, is_select_only, validate_sql_test
 
 BATCH_SIZE = 8
+MAX_WORKERS = int(os.getenv("KPI_NORMALIZATION_WORKERS", "4"))
 
 
 def _to_validation_test(entry: dict[str, Any], index: int) -> dict[str, Any]:
@@ -42,18 +45,25 @@ def normalize_kpi_sql_queries(
     normalized_queries: list[dict[str, Any]] = []
     global_notes: list[str] = []
 
-    for start in range(0, len(entries), BATCH_SIZE):
-        batch = entries[start : start + BATCH_SIZE]
-        payload = invoke_llm_json(
+    adb_context = json.dumps(adb_runtime_context(), indent=2)
+    batches = [entries[start : start + BATCH_SIZE] for start in range(0, len(entries), BATCH_SIZE)]
+
+    def _normalize_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
+        return invoke_llm_json(
             KPI_SQL_NORMALIZATION_PROMPT.format(
-                adb_context=json.dumps(adb_runtime_context(), indent=2),
+                adb_context=adb_context,
                 requirement_context=requirement_context or "No additional requirement context provided.",
                 kpi_entries=json.dumps(batch, indent=2),
             ),
             system_prompt=KPI_SQL_NORMALIZER_SYSTEM_PROMPT,
         )
-        normalized_queries.extend(payload.get("queries") or [])
-        global_notes.extend(payload.get("global_notes") or [])
+
+    # Batches are independent LLM calls; run them concurrently and keep input order.
+    workers = max(1, min(MAX_WORKERS, len(batches)))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="kpi-batch") as pool:
+        for payload in pool.map(_normalize_batch, batches):
+            normalized_queries.extend(payload.get("queries") or [])
+            global_notes.extend(payload.get("global_notes") or [])
 
     tests: list[dict[str, Any]] = []
     rejected: list[str] = []
@@ -63,11 +73,17 @@ def normalize_kpi_sql_queries(
         if not entry.get("runnable", True):
             rejected.append(
                 f"{entry.get('kpi_id', f'KPI-{index}')}: not runnable — "
-                + "; ".join(coerce_str_list(entry.get("issues_remaining")) or ["normalization failed"])
+                + "; ".join(entry.get("issues_remaining") or ["normalization failed"])
             )
             continue
 
         test = _to_validation_test(entry, index)
+        if has_unresolved_placeholders(test["sql_query"]):
+            rejected.append(
+                f"{entry.get('kpi_id', test['test_id'])}: not runnable — unresolved placeholder(s) "
+                "remain in the normalized SQL"
+            )
+            continue
         ok, reason = validate_sql_test(test)
         if ok and is_select_only(test["sql_query"]):
             tests.append(test)

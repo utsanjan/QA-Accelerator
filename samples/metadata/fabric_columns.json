@@ -1,0 +1,17 @@
+{
+  "tables": {
+    "main.stg.customer_raw": {
+      "columns": {
+        "cust_id": {"data_type": "INT", "nullable": false, "primary_key": true},
+        "cust_name": {"data_type": "VARCHAR(100)", "nullable": false, "primary_key": false},
+        "email": {"data_type": "VARCHAR(150)", "nullable": true, "primary_key": false}
+      }
+    },
+    "main.dw.dim_customer": {
+      "columns": {
+        "customer_id": {"data_type": "BIGINT", "nullable": false, "primary_key": true},
+        "customer_name": {"data_type": "VARCHAR(50)", "nullable": false, "primary_key": false}
+      }
+    }
+  }
+}

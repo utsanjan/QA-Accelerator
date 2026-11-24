@@ -1,0 +1,51 @@
+ETL QA Agent Test Requirements
+
+Source table: raw.customer
+Target table: curated.customer
+Primary key: customer_id
+
+Load type: incremental
+Incremental column: updated_at
+Watermark column: updated_at
+
+Transformation rules:
+- Trim customer_name before loading.
+- Convert country_code to uppercase.
+- Normalize email to lowercase.
+- Derive customer_segment from annual_revenue.
+- Preserve source customer_id as the target key.
+
+Business rules:
+- customer_id must not be null or duplicated.
+- customer_name must not be blank.
+- email must have a valid format.
+- annual_revenue must be greater than or equal to zero.
+- Only active customers are loaded.
+
+Incremental-load rules:
+- Insert new customers.
+- Update changed customers.
+- Process deletes from the source change feed.
+- Use updated_at as the watermark.
+- Rerunning the same watermark must not duplicate records.
+
+SCD rules:
+- customer_segment uses SCD Type 2 history.
+- effective_start_date and effective_end_date track record validity.
+- is_current identifies the active version.
+
+Negative and boundary rules:
+- Reject null customer_id values.
+- Reject negative annual_revenue values.
+- Validate the minimum and maximum supported updated_at values.
+- Reject malformed email values.
+
+Regression baseline:
+- Spec version: 2.0
+- Approved rules baseline: customer-validation-baseline-v1
+
+Lineage:
+- raw.customer.customer_id maps directly to curated.customer.customer_id.
+- raw.customer.customer_name maps through TRIM to curated.customer.customer_name.
+- raw.customer.country_code maps through UPPER to curated.customer.country_code.
+- raw.customer.email maps through LOWER to curated.customer.email.

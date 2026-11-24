@@ -17,7 +17,7 @@ def render_mapping_downloads(draft: dict[str, Any] | None, *, key_prefix: str = 
     if not has_output:
         return
 
-    st.subheader("Download mapping output")
+    st.subheader("Download mapping output · Mapping Analysis Agent")
     spec_name = (draft.get("source_files") or {}).get("spec_name") or "mapping_agent"
     safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in spec_name)[:60]
 
@@ -102,9 +102,13 @@ def render_stm_summary(draft: dict[str, Any] | None, *, key_prefix: str = "stm")
     if not table_names:
         table_names = sorted({str(row.get("target_table") or "") for row in mapping_rows if row.get("target_table")})
     col1, col2, col3 = st.columns(3)
-    col1.metric("Entities", len(table_names))
-    col2.metric("Mapping rows", len(mapping_rows))
-    col3.metric("Load-logic sections", len(logic))
+    col1.metric("Entities", len(table_names), help="Target tables described in the Word STM document.")
+    col2.metric("Mapping rows", len(mapping_rows), help="Column mapping rows extracted from the STM tables.")
+    col3.metric(
+        "Load-logic sections",
+        len(logic),
+        help="Pseudo-code or load-logic sections found for the entities.",
+    )
     if entities:
         st.dataframe(entities, use_container_width=True)
 
@@ -143,16 +147,28 @@ def render_mapping_analysis(analysis: dict[str, Any] | None) -> None:
     if not analysis or not analysis.get("mappings"):
         return
 
-    st.subheader("Mapping Analysis")
+    st.subheader("Mapping Analysis Agent")
     if analysis.get("requires_review"):
         st.warning(
             "High / Very-High risk mappings or gaps need QA review before SQL generation. "
             "Resolve UNKNOWN fields where possible."
         )
     col1, col2, col3 = st.columns(3)
-    col1.metric("Mappings", len(analysis.get("mappings") or []))
-    col2.metric("High risk", analysis.get("high_risk_count", 0))
-    col3.metric("Gaps", analysis.get("gap_count", 0))
+    col1.metric(
+        "Mappings",
+        len(analysis.get("mappings") or []),
+        help="Source-to-target column mappings found in the mapping document.",
+    )
+    col2.metric(
+        "High risk",
+        analysis.get("high_risk_count", 0),
+        help="Mappings rated High or Very High risk (complex logic, SCD, missing details). Review these first.",
+    )
+    col3.metric(
+        "Gaps",
+        analysis.get("gap_count", 0),
+        help="Missing or UNKNOWN details, such as keys, data types or transformation logic.",
+    )
 
     rows = []
     for item in analysis.get("mappings") or []:

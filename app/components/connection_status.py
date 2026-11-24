@@ -1,8 +1,10 @@
 import html as html_module
+from datetime import datetime
 
 import streamlit as st
 
-from src.config import get_connection_status
+from app.components.toast_loader import toast_loader
+from src.health import get_last_live_status, pending_status, refresh_live_status
 
 
 _STATUS_ACCENT = {
@@ -17,7 +19,7 @@ _CSS = """
   display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 1.25rem;
 }
 .conn-card {
-  flex: 1; min-width: 160px;
+  flex: 1 1 160px; min-width: 0;
   background: var(--md-surface-container,#1a2330);
   border: 1px solid var(--outline-variant,#26333f);
   border-radius: var(--shape-2xl,28px);
@@ -45,24 +47,39 @@ _CSS = """
 }
 .conn-detail {
   font-size: 12px; color: var(--muted,#92a1b5); font-family: monospace;
-  word-break: break-all;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
 }
 </style>
 """
 
 
+def load_live_status() -> dict:
+    """Return the stored result of the last check. Never contacts any service.
+
+    ``checked_at`` is ``None`` and the cards show "Not checked" until the refresh
+    button has been used at least once.
+    """
+    last = get_last_live_status()
+    if last is not None:
+        return last
+    return {"data": pending_status(), "checked_at": None, "config_changed": False}
+
+
 def render_connection_cards() -> None:
-    statuses = get_connection_status()
+    live = load_live_status()
+    statuses = live["data"]
     cards_html = ""
     for key, item in statuses.items():
         is_ready = item["status"] == "ready"
         state = "ready" if is_ready else ("error" if item["status"] == "error" else "attention")
         accent, bg, border = _STATUS_ACCENT.get(state, _STATUS_ACCENT["attention"])
-        status_label = "Ready" if is_ready else item["status"].title()
+        status_label = item.get("badge") or ("Ready" if is_ready else item["status"].title())
+        status_label = html_module.escape(status_label)
         label  = html_module.escape(item["label"])
         detail = html_module.escape(item["detail"])
+        tooltip = html_module.escape(item.get("info") or item["detail"], quote=True)
         cards_html += (
-            f'<div class="conn-card" style="border-left:3px solid {accent};">'
+            f'<div class="conn-card" data-qa-tip="{tooltip}" style="border-left:3px solid {accent};">'
             f'<div class="conn-label">{label}</div>'
             f'<div class="conn-badge" style="color:{accent};background:{bg};border-color:{border}50;">'
             f'{status_label}</div>'
@@ -72,3 +89,34 @@ def render_connection_cards() -> None:
         _CSS + f'<div class="conn-grid">{cards_html}</div>',
         unsafe_allow_html=True,
     )
+    render_recheck_control(live, key="home_recheck_connections")
+
+
+def _last_checked_caption(live: dict) -> str:
+    checked_at = live.get("checked_at")
+    if checked_at is None:
+        return "Not checked yet. Use the refresh button to verify the connections."
+    when = datetime.fromtimestamp(checked_at)
+    stamp = when.strftime("%d %b %Y, %H:%M:%S")
+    if live.get("config_changed"):
+        return f"Last checked {stamp}. Configuration has changed since - refresh to re-verify."
+    return f"Last checked {stamp}. Use the refresh button to check again."
+
+
+def render_recheck_control(live: dict, *, key: str) -> None:
+    """Show when the services were last checked and let the user re-run the checks."""
+    caption_col, button_col = st.columns([4, 1], vertical_alignment="center")
+    caption_col.caption(_last_checked_caption(live))
+    if button_col.button(
+        "Recheck",
+        icon=":material/refresh:",
+        key=key,
+        type="secondary",
+        help="Check connections now",
+    ):
+        with toast_loader(
+            "Connection check — checking service connections...",
+            done="Connection check — status updated.",
+        ):
+            refresh_live_status()
+        st.rerun()

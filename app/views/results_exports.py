@@ -24,7 +24,7 @@ def render() -> None:
     render_export_center(result, prefix="results")
 
     st.divider()
-    st.subheader("QA Report Preview")
+    st.subheader("QA Report Preview · Reporting Agent")
     st.markdown(result.get("qa_report") or "No report generated.")
 
     artifacts = result.get("test_case_artifacts") or {}
@@ -40,6 +40,6 @@ def render() -> None:
         st.subheader("Databricks Execution Results")
         st.dataframe(result["execution_results"], use_container_width=True)
 
-    if st.button("Open Test Case Explorer"):
+    if st.button("Open Test Case Explorer", help="Filter and inspect every generated test case."):
         st.session_state["current_page"] = "Test Case Explorer"
         st.rerun()

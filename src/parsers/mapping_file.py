@@ -7,14 +7,15 @@ from typing import Any
 
 
 def parse_mapping_file(path: Path | str, *, sheet_name: str | None = None) -> dict[str, Any]:
-    from src.parsers.excel_mapping_parser import parse_mapping_workbook
+    from src.parsers.excel_mapping_parser import parse_mapping_tabular
     from src.parsers.stm_extract import parse_stm_docx
     from src.parsers.tabular import coerce_path, is_word_document
 
     path = coerce_path(path)
     if is_word_document(path):
         return parse_stm_docx(path, write_excel=True)
-    return parse_mapping_workbook(path, sheet_name=sheet_name)
+    # Not parse_mapping_workbook: install_mapping_parser() patches that name to call back here.
+    return parse_mapping_tabular(path, sheet_name=sheet_name)
 
 
 def install_mapping_parser() -> None:

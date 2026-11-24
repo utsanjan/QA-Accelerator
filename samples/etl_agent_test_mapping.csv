@@ -1,0 +1,11 @@
+Source Table,Source Column,Source Data Type,Transformation,Target Table,Target Column,Target Data Type,Business Rule,Nullable,Primary Key,Notes
+raw.customer,customer_id,BIGINT,DIRECT,curated.customer,customer_id,BIGINT,Must be unique and not null,N,Y,Source business key
+raw.customer,customer_name,STRING,TRIM(customer_name),curated.customer,customer_name,STRING,Must not be blank,N,N,Trim whitespace
+raw.customer,email,STRING,LOWER(email),curated.customer,email,STRING,Must have a valid email format,N,N,Normalize case
+raw.customer,country_code,STRING,UPPER(country_code),curated.customer,country_code,STRING,Must be a valid country code,Y,N,Normalize case
+raw.customer,annual_revenue,DECIMAL(18,2),DIRECT,curated.customer,annual_revenue,DECIMAL(18,2),Must be greater than or equal to zero,N,N,Boundary validation
+raw.customer,updated_at,TIMESTAMP,DIRECT,curated.customer,updated_at,TIMESTAMP,Used as incremental watermark,N,N,Incremental load column
+raw.customer,customer_segment,STRING,SCD TYPE 2 DERIVED FROM annual_revenue,curated.customer,customer_segment,STRING,Track historical changes,N,N,SCD Type 2
+raw.customer,effective_start_date,TIMESTAMP,DIRECT,curated.customer,effective_start_date,TIMESTAMP,Required for SCD history,N,N,SCD Type 2
+raw.customer,effective_end_date,TIMESTAMP,DIRECT,curated.customer,effective_end_date,TIMESTAMP,Required for SCD history,Y,N,SCD Type 2
+raw.customer,is_current,BOOLEAN,DIRECT,curated.customer,is_current,BOOLEAN,Only one current version per key,N,N,SCD Type 2

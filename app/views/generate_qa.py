@@ -32,10 +32,22 @@ def render() -> None:
     has_kpi_logic = bool(source_files.get("kpi_logic_normalized_path"))
     st.info(f"Generating QA pack for **{source_files.get('spec_name', 'QA Pack')}** ({workflow_mode})")
 
-    include_functional = st.checkbox("Include functional test cases", value=True)
+    include_functional = st.checkbox(
+        "Include functional test cases",
+        value=True,
+        help="Test Case Agent writes functional / UI test cases from the requirement.",
+    )
     default_sql = workflow_mode != "functional" or has_kpi_logic
-    include_sql = st.checkbox("Include SQL validation tests", value=default_sql)
-    execute_on_adb = st.checkbox("Execute SQL on Azure Databricks", value=False)
+    include_sql = st.checkbox(
+        "Include SQL validation tests",
+        value=default_sql,
+        help="SQL Agent writes SELECT-only validation queries. Anything else is blocked by the safety check.",
+    )
+    execute_on_adb = st.checkbox(
+        "Execute SQL on Azure Databricks",
+        value=False,
+        help="Runs the approved queries on your Databricks warehouse. Off by default, and it may start the warehouse.",
+    )
 
     if workflow_mode == "functional" and not has_kpi_logic:
         include_sql = False
@@ -56,6 +68,7 @@ def render() -> None:
         "Approve & Generate QA Pack",
         type="primary",
         disabled=bool(job and not job["future"].done()),
+        help="Start generation in the background. Follow progress in Background Tasks.",
     ):
         try:
             if workflow_mode != "functional":
@@ -118,8 +131,24 @@ def render() -> None:
         st.divider()
         st.subheader("Last Run Summary")
         cols = st.columns(4)
-        cols[0].metric("SQL Tests", len(result.get("tests") or []))
-        cols[1].metric("Test Cases", len(result.get("test_cases") or []))
-        cols[2].metric("Run ID", (result.get("run_id") or "")[:8])
+        cols[0].metric(
+            "SQL Tests",
+            len(result.get("tests") or []),
+            help="SELECT-only validation queries that passed the safety check.",
+        )
+        cols[1].metric(
+            "Test Cases",
+            len(result.get("test_cases") or []),
+            help="Functional and data validation test cases in this pack.",
+        )
+        cols[2].metric(
+            "Run ID",
+            (result.get("run_id") or "")[:8],
+            help=f"Full run ID: {result.get('run_id') or 'N/A'}",
+        )
         summary = result.get("execution_summary") or {}
-        cols[3].metric("ADB Status", ", ".join(f"{k}:{v}" for k, v in summary.items()) or "Not run")
+        cols[3].metric(
+            "ADB Status",
+            ", ".join(f"{k}:{v}" for k, v in summary.items()) or "Not run",
+            help="Result of executing the SQL on Azure Databricks. Not run means execution was off.",
+        )

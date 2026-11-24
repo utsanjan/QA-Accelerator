@@ -3,7 +3,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from app.components.kpi_logic_upload import render_kpi_logic_section
+from app.components.kpi_logic_upload import render_kpi_summary
 from app.components.mapping_analysis import render_mapping_analysis, render_mapping_downloads, render_stm_summary
 from app.components.progress_stepper import render_stepper
 from app.components.story_card import render_story_card
@@ -44,7 +44,7 @@ def render() -> None:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Requirement Analysis")
+        st.subheader("Requirement Analysis Agent")
         summary = draft.get("requirement_summary") or {}
         st.write(summary.get("requirement_summary") or "No summary available.")
         if summary.get("business_rules"):
@@ -89,7 +89,7 @@ def render() -> None:
             st.dataframe(mapping_rows[:20], use_container_width=True)
         llm_output = draft.get("llm_mapping_output") or {}
         if llm_output.get("transformation_rules") or llm_output.get("entities"):
-            st.subheader("LLM mapping output")
+            st.subheader("LLM mapping output · Mapping Analysis Agent")
             st.caption("Azure OpenAI wrote transformations, keys, and rules from the STM tables and pseudo-code.")
             for item in llm_output.get("entities") or []:
                 pk = item.get("primary_key") or "UNKNOWN"
@@ -102,14 +102,28 @@ def render() -> None:
         st.subheader("Functional QA Draft")
         st.write("This draft will generate functional/UI test cases without requiring an ETL mapping.")
 
-    st.divider()
-    render_kpi_logic_section(draft_id=draft_id, key_prefix="review_kpi")
-    kpi_path = (draft.get("source_files") or {}).get("kpi_logic_path")
-    if kpi_path:
-        st.caption(f"Attached KPI logic: `{kpi_path}`")
+    source_files = draft.get("source_files") or {}
+    kpi_normalized = service._load_kpi_normalization(source_files)
+    if kpi_normalized:
+        st.divider()
+        render_kpi_summary(
+            kpi_normalized,
+            key_prefix="review_kpi",
+            source_path=source_files.get("kpi_logic_path", ""),
+        )
+    elif source_files.get("kpi_logic_path"):
+        st.divider()
+        st.caption(
+            f"Attached KPI logic: `{source_files['kpi_logic_path']}` "
+            "(normalized results file not found)"
+        )
 
     action1, action2, action3 = st.columns(3)
-    if action1.button("Save Draft", use_container_width=True):
+    if action1.button(
+        "Save Draft",
+        use_container_width=True,
+        help="Save your edits to this draft. It stays pending review.",
+    ):
         try:
             if workflow_mode != "functional":
                 edited = json.loads(st.session_state.get("draft_spec_json") or "{}")
@@ -119,7 +133,11 @@ def render() -> None:
         except Exception as exc:
             st.error(str(exc))
 
-    if action2.button("Delete Draft", use_container_width=True):
+    if action2.button(
+        "Delete Draft",
+        use_container_width=True,
+        help="Permanently remove this draft. This cannot be undone.",
+    ):
         try:
             service.review_store.delete_draft(draft_id)
             st.session_state["draft_id"] = ""
@@ -129,6 +147,11 @@ def render() -> None:
         except Exception as exc:
             st.error(str(exc))
 
-    if action3.button("Proceed to Generate", type="primary", use_container_width=True):
+    if action3.button(
+        "Proceed to Generate",
+        type="primary",
+        use_container_width=True,
+        help="Continue to Generate QA Pack to approve this draft and create the tests.",
+    ):
         st.session_state["current_page"] = "Generate QA Pack"
         st.rerun()

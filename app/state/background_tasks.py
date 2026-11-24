@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 import math
+from uuid import uuid4
 
 import streamlit as st
 
@@ -218,6 +219,32 @@ def upsert_task(task: BackgroundTask) -> None:
     _save_tasks(tasks)
 
 
+def record_notification(
+    title: str,
+    description: str,
+    *,
+    status: Literal["completed", "failed"] = "completed",
+    error: str = "",
+    started_at: str = "",
+) -> None:
+    """Keep a toast outcome in the background-task list after the toast disappears."""
+    now = _now_iso()
+    upsert_task(
+        BackgroundTask(
+            id=f"notification-{uuid4().hex}",
+            name=title,
+            description=description,
+            status=status,
+            progress=100,
+            kind=TaskKind.NOTIFY,
+            started_at=started_at or now,
+            updated_at=now,
+            error=error,
+            source="live",
+        )
+    )
+
+
 def _estimate_qa_progress(started_at: str) -> float:
     try:
         started = datetime.fromisoformat(started_at)
@@ -243,7 +270,7 @@ def sync_qa_generation_task() -> None:
         task = BackgroundTask(
             id=QA_TASK_ID,
             name="Generating QA Pack",
-            description="Running SQL validation, safety checks, and test case generation.",
+            description="SQL Agent and Test Case Agent: running SQL validation, safety checks, and test case generation.",
             status="running",
             progress=_estimate_qa_progress(started),
             kind=TaskKind.QA_PACK,

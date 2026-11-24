@@ -5,12 +5,14 @@ import streamlit as st
 from app.components.connection_status import render_connection_cards
 from app.components.export_buttons import render_export_center
 from app.components.theme import page_header
+from app.components.toast_loader import toast_loader
+from app.components.tooltips import tip
 from app.state.session import SAMPLES, get_service
 
 
-def _kpi_card(title: str, value, accent: str = "var(--primary,#38bdf8)") -> str:
+def _kpi_card(title: str, value, accent: str = "var(--primary,#38bdf8)", hint: str = "") -> str:
     return (
-        f'<div class="summary-card" style="border-left-color:{accent};">'
+        f'<div class="summary-card"{tip(hint)} style="border-left-color:{accent};">'
         f'<div class="title">{html_module.escape(str(title))}</div>'
         f'<div class="value">{html_module.escape(str(value))}</div></div>'
     )
@@ -32,10 +34,22 @@ def render() -> None:
     n_tests = len(last.get("test_cases") or [])
 
     cards_html = (
-        _kpi_card("Pending Drafts",  len(drafts),                                   "var(--tertiary,#a78bfa)")
-        + _kpi_card("Recent Runs",   len(runs),                                     "var(--primary,#38bdf8)")
-        + _kpi_card("Approved Specs",len(service.metadata_store.list_specs()),       "var(--secondary,#4ade80)")
-        + _kpi_card("Last Run Tests",n_tests,                                        "var(--primary,#38bdf8)")
+        _kpi_card(
+            "Pending Drafts", len(drafts), "var(--tertiary,#a78bfa)",
+            "Drafts waiting for review. Open Review to approve or delete them.",
+        )
+        + _kpi_card(
+            "Recent Runs", len(runs), "var(--primary,#38bdf8)",
+            "QA runs recorded recently (the latest 5). See History for all runs.",
+        )
+        + _kpi_card(
+            "Approved Specs", len(service.metadata_store.list_specs()), "var(--secondary,#4ade80)",
+            "ETL specs approved and saved in the Spec Library.",
+        )
+        + _kpi_card(
+            "Last Run Tests", n_tests, "var(--primary,#38bdf8)",
+            "Test cases in the most recent QA pack generated in this session.",
+        )
     )
     st.markdown(
         f'<div class="summary-grid">{cards_html}</div>',
@@ -45,11 +59,19 @@ def render() -> None:
     # Quick actions
     st.markdown('<div class="section-title">Quick Actions</div>', unsafe_allow_html=True)
     action1, action2, action3 = st.columns(3)
-    if action1.button("Go to Import", use_container_width=True):
+    if action1.button(
+        "Go to Import",
+        use_container_width=True,
+        help="Start by importing stories, a mapping file or a manual story.",
+    ):
         st.session_state["current_page"] = "Import"
         st.rerun()
-    if action2.button("Run Sample Demo", use_container_width=True):
-        with st.spinner("Building sample draft..."):
+    if action2.button(
+        "Run Sample Demo",
+        use_container_width=True,
+        help="Build a draft from the bundled sample mapping and requirement, then open Review.",
+    ):
+        with toast_loader("Building sample draft...", done="Sample draft built."):
             draft = service.build_draft_from_files(
                 mapping_path=SAMPLES / "mappings" / "sample_mapping.xlsx",
                 requirement_path=SAMPLES / "requirements" / "sample_brd.txt",
@@ -60,7 +82,11 @@ def render() -> None:
             st.session_state["workflow_mode"]   = draft.get("workflow_mode", "etl")
             st.session_state["current_page"]    = "Review Draft"
             st.rerun()
-    if action3.button("View Latest Results", use_container_width=True):
+    if action3.button(
+        "View Latest Results",
+        use_container_width=True,
+        help="Open the most recent QA pack: report, test cases and downloads.",
+    ):
         st.session_state["current_page"] = "Results & Exports"
         st.rerun()
 
@@ -76,10 +102,10 @@ def render() -> None:
             count = run.get("test_case_count", 0)
             rid   = run.get("run_id", "")
             rows_html += (
-                f'<tr class="main-row">'
+                f'<tr class="main-row"{tip("Run ID: " + str(rid))}>'
                 f'<td><strong>{name}</strong></td>'
                 f'<td class="timestamp">{ts}</td>'
-                f'<td><span class="section-badge">{count} tests</span></td>'
+                f'<td><span class="section-badge"{tip("Test cases generated in this run")}>{count} tests</span></td>'
                 f'</tr>'
             )
         st.markdown(

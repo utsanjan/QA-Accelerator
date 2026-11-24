@@ -2,6 +2,8 @@ import html as html_module
 
 import streamlit as st
 
+from app.components.tooltips import tip
+
 _CSS = """
 <style>
 details.story-card-wrap {
@@ -76,16 +78,16 @@ def render_story_card(story: dict) -> None:
     desc       = html_module.escape(story.get("description") or "No description provided.")
     acceptance = html_module.escape(story.get("acceptance_criteria") or "No acceptance criteria provided.")
 
-    tag_html = f'<span class="story-badge">{tags}</span>' if tags else ""
-    state_html = f'<span class="story-badge">{state_val}</span>' if state_val else ""
+    tag_html = f'<span class="story-badge"{tip("Tags: " + tags)}>{tags}</span>' if tags else ""
+    state_html = f'<span class="story-badge"{tip("State: " + state_val)}>{state_val}</span>' if state_val else ""
 
     html_out = (
         _CSS
         + f'<details class="story-card-wrap">'
         + f'<summary>'
-        + f'<span class="story-id-chip">US-{story_id}</span>'
+        + f'<span class="story-id-chip"{tip("Azure DevOps work item " + str(story_id))}>US-{story_id}</span>'
         + f'<span class="story-title">{title}</span>'
-        + f'<span class="story-badge">{work_type}</span>'
+        + f'<span class="story-badge"{tip("Work item type: " + work_type)}>{work_type}</span>'
         + state_html
         + tag_html
         + _CHEVRON

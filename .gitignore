@@ -1,20 +1,58 @@
+# --- Python ---
 .venv/
-.tools/
 __pycache__/
 *.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --- Secrets & local env ---
 .env
+.env.local
+.env.*.local
+.streamlit/secrets.toml
+
+# --- Editors / tooling ---
+.vscode/
+.idea/
+.tools/
 .langgraph_api/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Logs & scratch ---
 *.log
 *.bak
 _old_*.py
-metadata/
-runs/
-review/
-uploads/
-imports/
-output/
-qa_validation_pack.md
-qa_test_cases.xlsx
+
+# --- App runtime (created by setup / UI) ---
+/imports/
+/output/
+/review/
+/runs/
+/uploads/
+
+# Local metadata store (folder recreated by setup.ps1)
+/metadata/*.db
+/metadata/*.sqlite
+/metadata/*.sqlite3
+/metadata/connection_status.json
+
+# Legacy CLI outputs if written at repo root
+/qa_validation_pack.md
+/qa_test_cases.xlsx
+
+# Generated mapping exports next to samples (do not commit)
+samples/**/*_normalized_mapping.xlsx

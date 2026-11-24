@@ -165,12 +165,9 @@ def _parse_mapping_rows(rows: list[Any], path: Path, sheet_name: str) -> dict[st
     }
 
 
-def parse_mapping_workbook(path: Path | str, *, sheet_name: str | None = None) -> dict[str, Any]:
+def parse_mapping_tabular(path: Path | str, *, sheet_name: str | None = None) -> dict[str, Any]:
+    """Parse an Excel or CSV mapping file (never Word)."""
     path = coerce_path(path)
-    if is_word_document(path):
-        from src.parsers.stm_extract import parse_stm_docx
-
-        return parse_stm_docx(path, write_excel=True)
     if should_read_as_csv(path):
         return _parse_mapping_rows(read_csv_rows(path), path, path.stem)
     if not is_excel_workbook(path):
@@ -183,3 +180,12 @@ def parse_mapping_workbook(path: Path | str, *, sheet_name: str | None = None) -
     sheet = workbook[sheet_name] if sheet_name else workbook.active
     rows = list(sheet.iter_rows(values_only=True))
     return _parse_mapping_rows(rows, path, sheet.title)
+
+
+def parse_mapping_workbook(path: Path | str, *, sheet_name: str | None = None) -> dict[str, Any]:
+    path = coerce_path(path)
+    if is_word_document(path):
+        from src.parsers.stm_extract import parse_stm_docx
+
+        return parse_stm_docx(path, write_excel=True)
+    return parse_mapping_tabular(path, sheet_name=sheet_name)

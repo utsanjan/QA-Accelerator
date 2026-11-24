@@ -3,6 +3,7 @@ import json
 import streamlit as st
 
 from app.components.theme import page_header
+from app.components.toast_loader import toast_loader
 from app.state.session import OUTPUT, get_service, set_validation_result
 
 
@@ -23,11 +24,20 @@ def render() -> None:
                 continue
             st.json(record["content"])
 
-            execute = st.checkbox("Execute on Databricks", key=f"adb_{spec['id']}")
+            execute = st.checkbox(
+                "Execute on Databricks",
+                key=f"adb_{spec['id']}",
+                help="Run the generated SQL on your Databricks warehouse. Off by default.",
+            )
             col1, col2 = st.columns(2)
-            if col1.button("Re-run Validation", key=f"rerun_{spec['id']}", use_container_width=True):
+            if col1.button(
+                "Re-run Validation",
+                key=f"rerun_{spec['id']}",
+                use_container_width=True,
+                help="Generate a fresh QA pack from this approved spec.",
+            ):
                 try:
-                    with st.spinner("Re-running validation..."):
+                    with toast_loader("Re-running validation...", done="Validation complete."):
                         result = service.run_validation(
                             etl_spec=record["content"],
                             spec_id=record["id"],
